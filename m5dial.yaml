@@ -20,6 +20,7 @@ esphome:
       - pcf8563.read_time:
       - delay: 1s
       - script.execute: update_preset_selection
+      - script.execute: update_preset_labels
   platformio_options:
     board_build.flash_mode: dio
 
@@ -48,6 +49,8 @@ api:
         id: height_label
     - lvgl.widget.show:
         id: mode_label
+    - delay: 500ms
+    - script.execute: update_preset_labels
   on_client_disconnected:
     - lambda: |-
         ESP_LOGI("api", "Home Assistant disconnected!");
@@ -108,6 +111,27 @@ script:
           state:
             checked: !lambda 'return id(selected_preset) == 2;'
 
+  - id: update_preset_labels
+    then:
+      - lvgl.label.update:
+          id: preset_1_label
+          text: !lambda |-
+            char buf[16];
+            snprintf(buf, sizeof(buf), "%.0f cm", id(preset_1_height_num).state);
+            return std::string(buf);
+      - lvgl.label.update:
+          id: preset_2_label
+          text: !lambda |-
+            char buf[16];
+            snprintf(buf, sizeof(buf), "%.0f cm", id(preset_2_height_num).state);
+            return std::string(buf);
+      - lvgl.label.update:
+          id: preset_3_label
+          text: !lambda |-
+            char buf[16];
+            snprintf(buf, sizeof(buf), "%.0f cm", id(preset_3_height_num).state);
+            return std::string(buf);
+
 globals:
   - id: encoder_mode
     type: int
@@ -161,6 +185,11 @@ sensor:
     pin_a: GPIO40
     pin_b: GPIO41
     on_clockwise:
+      - if:
+          condition: lvgl.is_paused
+          then:
+            - lvgl.resume:
+            - lvgl.widget.redraw:
       - light.turn_on: display_backlight
       - lambda: |-
           ESP_LOGI("encoder", "Clockwise rotation, mode: %d, page: %d, page_2_active: %d", id(encoder_mode), id(current_page), id(page_2_active));
@@ -210,6 +239,11 @@ sensor:
                       id: presets_hint
                       text: "Press to select"
     on_anticlockwise:
+      - if:
+          condition: lvgl.is_paused
+          then:
+            - lvgl.resume:
+            - lvgl.widget.redraw:
       - light.turn_on: display_backlight
       - lambda: |-
           ESP_LOGI("encoder", "Anticlockwise rotation, mode: %d, page: %d, page_2_active: %d", id(encoder_mode), id(current_page), id(page_2_active));
@@ -297,6 +331,11 @@ binary_sensor:
     id: front_button
     pin: GPIO42
     on_press:
+      - if:
+          condition: lvgl.is_paused
+          then:
+            - lvgl.resume:
+            - lvgl.widget.redraw:
       - light.turn_on: display_backlight
       - lambda: |-
           ESP_LOGI("button", "Button pressed on page %d, page_2_active: %d", id(current_page), id(page_2_active));
@@ -319,16 +358,19 @@ binary_sensor:
                   # On presets page and active - apply selected preset and deactivate
                   - lambda: |-
                       ESP_LOGI("preset", "Applying preset %d", id(selected_preset));
-                      const char* heights[] = {"${preset_1_height}", "${preset_2_height}", "${preset_3_height}"};
-                      const char* selected_height = heights[id(selected_preset)];
-                      ESP_LOGI("preset", "Setting desk to %s cm", selected_height);
                   - homeassistant.service:
                       service: number.set_value
                       data:
                         entity_id: number.megadesk_height_cm_2
                         value: !lambda |-
-                          const char* heights[] = {"${preset_1_height}", "${preset_2_height}", "${preset_3_height}"};
-                          return atof(heights[id(selected_preset)]);
+                          float heights[] = {
+                            id(preset_1_height_num).state,
+                            id(preset_2_height_num).state,
+                            id(preset_3_height_num).state
+                          };
+                          float selected_height = heights[id(selected_preset)];
+                          ESP_LOGI("preset", "Setting desk to %.0f cm", selected_height);
+                          return selected_height;
                   - lambda: |-
                       ESP_LOGI("preset", "Preset applied, deactivating page 2");
                       id(page_2_active) = false;
@@ -367,6 +409,11 @@ binary_sensor:
     entity_id: binary_sensor.zajetosc_biura
     on_press:
       - logger.log: "Office occupied, waking up display"
+      - if:
+          condition: lvgl.is_paused
+          then:
+            - lvgl.resume:
+            - lvgl.widget.redraw:
       - light.turn_on: display_backlight
 
 spi:
@@ -384,6 +431,61 @@ display:
     invert_colors: false
     rotation: 180
 
+number:
+  - platform: template
+    name: LVGL Screen timeout
+    optimistic: true
+    id: display_timeout
+    unit_of_measurement: "s"
+    initial_value: 45
+    restore_value: true
+    min_value: 10
+    max_value: 180
+    step: 5
+    mode: box
+
+  - platform: template
+    name: "Preset 1 Height"
+    optimistic: true
+    id: preset_1_height_num
+    unit_of_measurement: "cm"
+    initial_value: ${preset_1_height}
+    restore_value: true
+    min_value: 60
+    max_value: 120
+    step: 1
+    mode: box
+    on_value:
+      - script.execute: update_preset_labels
+
+  - platform: template
+    name: "Preset 2 Height"
+    optimistic: true
+    id: preset_2_height_num
+    unit_of_measurement: "cm"
+    initial_value: ${preset_2_height}
+    restore_value: true
+    min_value: 60
+    max_value: 120
+    step: 1
+    mode: box
+    on_value:
+      - script.execute: update_preset_labels
+
+  - platform: template
+    name: "Preset 3 Height"
+    optimistic: true
+    id: preset_3_height_num
+    unit_of_measurement: "cm"
+    initial_value: ${preset_3_height}
+    restore_value: true
+    min_value: 60
+    max_value: 120
+    step: 1
+    mode: box
+    on_value:
+      - script.execute: update_preset_labels
+
 touchscreen:
   - platform: ft5x06
     id: touch
@@ -391,6 +493,14 @@ touchscreen:
     address: 0x38
     on_touch:
       - light.turn_on: display_backlight
+    on_release:
+      - if:
+          condition: lvgl.is_paused
+          then:
+            - logger.log: "LVGL resuming"
+            - lvgl.resume:
+            - lvgl.widget.redraw:
+            - light.turn_on: display_backlight
     # interrupt_pin: GPIO14  # not supported by this component
 
 light:
@@ -415,10 +525,12 @@ lvgl:
   touchscreens:
     - touch
   on_idle:
-    timeout: 30s
+    timeout: !lambda "return (id(display_timeout).state * 1000);"
     then:
-      - logger.log: "LVGL is idle, dimming display"
+      - logger.log: "LVGL is idle"
       - light.turn_off: display_backlight
+      - lvgl.pause:
+          show_snow: true
   pages:
     - id: desk_page
       widgets:
@@ -484,6 +596,7 @@ lvgl:
                   text: "${preset_1_icon}"
                   text_font: mdi_32
               - label:
+                  id: preset_1_label
                   align: CENTER
                   x: 20
                   text: "${preset_1_height} cm"
@@ -502,6 +615,7 @@ lvgl:
                   text: "${preset_2_icon}"
                   text_font: mdi_32
               - label:
+                  id: preset_2_label
                   align: CENTER
                   x: 20
                   text: "${preset_2_height} cm"
@@ -520,6 +634,7 @@ lvgl:
                   text: "${preset_3_icon}"
                   text_font: mdi_32
               - label:
+                  id: preset_3_label
                   align: CENTER
                   x: 20
                   text: "${preset_3_height} cm"
