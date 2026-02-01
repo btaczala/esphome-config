@@ -1,0 +1,537 @@
+substitutions:
+  preset_1_height: "67"
+  preset_1_label: "Sitting"
+  preset_1_icon: "\U000F0F48"  # chair-rolling
+
+  preset_2_height: "70"
+  preset_2_label: "Bike"
+  preset_2_icon: "\U000F109C"  # bicycle
+
+  preset_3_height: "75"
+  preset_3_label: "Standing"
+  preset_3_icon: "\U000F1239"  # human-male-height
+
+esphome:
+  name: m5stack-dial
+  friendly_name: M5Stack Dial
+  on_boot:
+    then:
+      - light.turn_on: display_backlight
+      - pcf8563.read_time:
+      - delay: 1s
+      - script.execute: update_preset_selection
+  platformio_options:
+    board_build.flash_mode: dio
+
+esp32:
+  variant: esp32s3
+  framework:
+    type: esp-idf
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  ap:
+
+captive_portal:
+
+api:
+  on_client_connected:
+    - lambda: |-
+        ESP_LOGI("api", "Home Assistant connected!");
+        id(ha_connected) = true;
+    - lvgl.widget.hide:
+        id: connecting_spinner
+    - lvgl.widget.hide:
+        id: connecting_label
+    - lvgl.widget.show:
+        id: height_label
+    - lvgl.widget.show:
+        id: mode_label
+  on_client_disconnected:
+    - lambda: |-
+        ESP_LOGI("api", "Home Assistant disconnected!");
+        id(ha_connected) = false;
+    - lvgl.widget.show:
+        id: connecting_spinner
+    - lvgl.widget.show:
+        id: connecting_label
+    - lvgl.widget.hide:
+        id: height_label
+    - lvgl.widget.hide:
+        id: mode_label
+
+ota:
+
+logger:
+
+script:
+  - id: delayed_height_update
+    mode: restart
+    then:
+      - delay: 500ms
+      - script.execute: apply_height_change
+
+  - id: apply_height_change
+    then:
+      - if:
+          condition:
+            lambda: 'return id(pending_height_change) != 0.0;'
+          then:
+            - lambda: |-
+                float change = id(pending_height_change);
+                float new_height = id(desk_target_height).state + change;
+                ESP_LOGI("encoder", "Applying accumulated change: %.1f, new height: %.1f", change, new_height);
+            - homeassistant.service:
+                service: number.set_value
+                data:
+                  entity_id: number.megadesk_height_cm_2
+                  value: !lambda |-
+                    float new_val = id(desk_target_height).state + id(pending_height_change);
+                    return new_val;
+            - lambda: |-
+                id(pending_height_change) = 0.0;
+                ESP_LOGI("encoder", "Height change applied and reset");
+
+  - id: update_preset_selection
+    then:
+      - lvgl.button.update:
+          id: preset_67
+          state:
+            checked: !lambda 'return id(selected_preset) == 0;'
+      - lvgl.button.update:
+          id: preset_100
+          state:
+            checked: !lambda 'return id(selected_preset) == 1;'
+      - lvgl.button.update:
+          id: preset_108
+          state:
+            checked: !lambda 'return id(selected_preset) == 2;'
+
+globals:
+  - id: encoder_mode
+    type: int
+    restore_value: no
+    initial_value: '0'  # 0 = page navigation, 1 = height control
+  - id: pending_height_change
+    type: float
+    restore_value: no
+    initial_value: '0.0'
+  - id: ha_connected
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+  - id: selected_preset
+    type: int
+    restore_value: no
+    initial_value: '0'  # 0 = preset 1, 1 = preset 2, 2 = preset 3
+  - id: current_page
+    type: int
+    restore_value: no
+    initial_value: '0'  # 0 = page 1 (desk), 1 = page 2 (presets), 2 = page 3
+  - id: page_2_active
+    type: bool
+    restore_value: no
+    initial_value: 'false'  # true when page 2 is in preset selection mode
+
+i2c:
+  - id: internal_i2c
+    sda: GPIO11
+    scl: GPIO12
+
+rc522_i2c:
+  - id: nfc_reader
+    i2c_id: internal_i2c
+    address: 0x28
+
+output:
+  - platform: ledc
+    pin: GPIO3
+    id: buzzer
+  - platform: ledc
+    pin: GPIO9
+    id: backlight_output
+
+rtttl:
+  output: buzzer
+
+sensor:
+  - platform: rotary_encoder
+    id: encoder
+    pin_a: GPIO40
+    pin_b: GPIO41
+    on_clockwise:
+      - light.turn_on: display_backlight
+      - lambda: |-
+          ESP_LOGI("encoder", "Clockwise rotation, mode: %d, page: %d, page_2_active: %d", id(encoder_mode), id(current_page), id(page_2_active));
+      - if:
+          condition:
+            lambda: 'return id(encoder_mode) == 1;'
+          then:
+            # Height control mode on page 1
+            - lambda: |-
+                id(pending_height_change) += 2.0;
+                float projected = id(desk_target_height).state + id(pending_height_change);
+                ESP_LOGI("encoder", "Accumulated change: %.1f, projected height: %.1f", id(pending_height_change), projected);
+            - lvgl.label.update:
+                id: height_label
+                text: !lambda |-
+                  char buf[32];
+                  float projected = id(desk_target_height).state + id(pending_height_change);
+                  snprintf(buf, sizeof(buf), "%.1f cm", projected);
+                  return std::string(buf);
+            - script.execute: delayed_height_update
+          else:
+            - if:
+                condition:
+                  lambda: 'return id(current_page) == 1 && id(page_2_active);'
+                then:
+                  # On presets page and active - cycle through presets
+                  - lambda: |-
+                      id(selected_preset) = (id(selected_preset) + 1) % 3;
+                      ESP_LOGI("encoder", "Selected preset: %d", id(selected_preset));
+                  - script.execute: update_preset_selection
+                else:
+                  # Navigate to next page
+                  - lambda: |-
+                      ESP_LOGI("encoder", "Page navigation - next");
+                  - lvgl.page.next:
+                  - lambda: |-
+                      id(current_page) = (id(current_page) + 1) % 3;
+                      id(encoder_mode) = 0;
+                      if (id(page_2_active)) {
+                        id(page_2_active) = false;  // Deactivate page 2 when leaving
+                      }
+                      ESP_LOGI("encoder", "Now on page: %d", id(current_page));
+                  - lvgl.label.update:
+                      id: mode_label
+                      text: "Turn to navigate"
+                  - lvgl.label.update:
+                      id: presets_hint
+                      text: "Press to select"
+    on_anticlockwise:
+      - light.turn_on: display_backlight
+      - lambda: |-
+          ESP_LOGI("encoder", "Anticlockwise rotation, mode: %d, page: %d, page_2_active: %d", id(encoder_mode), id(current_page), id(page_2_active));
+      - if:
+          condition:
+            lambda: 'return id(encoder_mode) == 1;'
+          then:
+            # Height control mode on page 1
+            - lambda: |-
+                id(pending_height_change) -= 2.0;
+                float projected = id(desk_target_height).state + id(pending_height_change);
+                ESP_LOGI("encoder", "Accumulated change: %.1f, projected height: %.1f", id(pending_height_change), projected);
+            - lvgl.label.update:
+                id: height_label
+                text: !lambda |-
+                  char buf[32];
+                  float projected = id(desk_target_height).state + id(pending_height_change);
+                  snprintf(buf, sizeof(buf), "%.1f cm", projected);
+                  return std::string(buf);
+            - script.execute: delayed_height_update
+          else:
+            - if:
+                condition:
+                  lambda: 'return id(current_page) == 1 && id(page_2_active);'
+                then:
+                  # On presets page and active - cycle through presets
+                  - lambda: |-
+                      id(selected_preset) = (id(selected_preset) + 2) % 3;  // +2 mod 3 = -1 mod 3
+                      ESP_LOGI("encoder", "Selected preset: %d", id(selected_preset));
+                  - script.execute: update_preset_selection
+                else:
+                  # Navigate to previous page
+                  - lambda: |-
+                      ESP_LOGI("encoder", "Page navigation - previous");
+                  - lvgl.page.previous:
+                  - lambda: |-
+                      id(current_page) = (id(current_page) + 2) % 3;  // +2 mod 3 = -1 mod 3
+                      id(encoder_mode) = 0;
+                      if (id(page_2_active)) {
+                        id(page_2_active) = false;  // Deactivate page 2 when leaving
+                      }
+                      ESP_LOGI("encoder", "Now on page: %d", id(current_page));
+                  - lvgl.label.update:
+                      id: mode_label
+                      text: "Turn to navigate"
+                  - lvgl.label.update:
+                      id: presets_hint
+                      text: "Press to select"
+
+  - platform: homeassistant
+    id: desk_height
+    entity_id: sensor.megadesk_height_cm
+    on_value:
+      - lvgl.label.update:
+          id: height_label
+          text: !lambda |-
+            ESP_LOGI("encoder", "value changed");
+            char buf[32];
+            snprintf(buf, sizeof(buf), "%.1f cm", x);
+            return std::string(buf);
+
+  - platform: homeassistant
+    id: desk_target_height
+    entity_id: number.megadesk_height_cm_2
+    on_value:
+      - lambda: |-
+          ESP_LOGI("encoder", "Target height updated to: %.1f", x);
+
+time:
+  # RTC
+  - platform: pcf8563
+    id: rtctime
+    i2c_id: internal_i2c
+    address: 0x51
+    update_interval: never
+  - platform: homeassistant
+    id: esptime
+    on_time_sync:
+      then:
+        - pcf8563.write_time:
+
+binary_sensor:
+  - platform: gpio
+    name: Button
+    id: front_button
+    pin: GPIO42
+    on_press:
+      - light.turn_on: display_backlight
+      - lambda: |-
+          ESP_LOGI("button", "Button pressed on page %d, page_2_active: %d", id(current_page), id(page_2_active));
+      - if:
+          condition:
+            lambda: 'return id(current_page) == 1 && !id(page_2_active);'
+          then:
+            # On presets page but not active - activate it
+            - lambda: |-
+                ESP_LOGI("preset", "Activating page 2 for preset selection");
+                id(page_2_active) = true;
+            - lvgl.label.update:
+                id: presets_hint
+                text: "Turn to select"
+          else:
+            - if:
+                condition:
+                  lambda: 'return id(current_page) == 1 && id(page_2_active);'
+                then:
+                  # On presets page and active - apply selected preset and deactivate
+                  - lambda: |-
+                      ESP_LOGI("preset", "Applying preset %d", id(selected_preset));
+                      const char* heights[] = {"${preset_1_height}", "${preset_2_height}", "${preset_3_height}"};
+                      const char* selected_height = heights[id(selected_preset)];
+                      ESP_LOGI("preset", "Setting desk to %s cm", selected_height);
+                  - homeassistant.service:
+                      service: number.set_value
+                      data:
+                        entity_id: number.megadesk_height_cm_2
+                        value: !lambda |-
+                          const char* heights[] = {"${preset_1_height}", "${preset_2_height}", "${preset_3_height}"};
+                          return atof(heights[id(selected_preset)]);
+                  - lambda: |-
+                      ESP_LOGI("preset", "Preset applied, deactivating page 2");
+                      id(page_2_active) = false;
+                  - lvgl.label.update:
+                      id: presets_hint
+                      text: "Press to select"
+                else:
+                  # On desk page - toggle encoder mode
+                  - lambda: |-
+                      int old_mode = id(encoder_mode);
+                      id(encoder_mode) = (id(encoder_mode) == 0) ? 1 : 0;
+                      ESP_LOGI("encoder", "Button pressed! Mode switched from %d to %d", old_mode, id(encoder_mode));
+                  - if:
+                      condition:
+                        lambda: 'return id(encoder_mode) == 0 && id(pending_height_change) != 0.0;'
+                      then:
+                        - lambda: |-
+                            ESP_LOGI("encoder", "Switching to nav mode, applying pending changes first");
+                        - script.stop: delayed_height_update
+                        - script.execute: apply_height_change
+                  - lvgl.label.update:
+                      id: mode_label
+                      text: !lambda |-
+                        if (id(encoder_mode) == 1) {
+                          return std::string("Turn to adjust");
+                        } else {
+                          return std::string("Turn to navigate");
+                        }
+
+  - platform: gpio
+    name: Hold Button
+    pin: GPIO46
+
+  - platform: homeassistant
+    id: office_occupancy
+    entity_id: binary_sensor.zajetosc_biura
+    on_press:
+      - logger.log: "Office occupied, waking up display"
+      - light.turn_on: display_backlight
+
+spi:
+  id: spi_bus
+  mosi_pin: GPIO5
+  clk_pin: GPIO6
+
+display:
+  - platform: ili9xxx
+    id: round_display
+    model: GC9A01A
+    cs_pin: GPIO7
+    reset_pin: GPIO8
+    dc_pin: GPIO4
+    invert_colors: false
+    rotation: 180
+
+touchscreen:
+  - platform: ft5x06
+    id: touch
+    i2c_id: internal_i2c
+    address: 0x38
+    on_touch:
+      - light.turn_on: display_backlight
+    # interrupt_pin: GPIO14  # not supported by this component
+
+light:
+  - platform: monochromatic
+    name: "Backlight"
+    output: backlight_output
+    id: display_backlight
+    default_transition_length: 0s
+
+font:
+  - file: "materialdesignicons-webfont.ttf"
+    id: mdi_32
+    size: 32
+    glyphs:
+      - "${preset_1_icon}"
+      - "${preset_2_icon}"
+      - "${preset_3_icon}"
+
+lvgl:
+  displays:
+    - round_display
+  touchscreens:
+    - touch
+  on_idle:
+    timeout: 30s
+    then:
+      - logger.log: "LVGL is idle, dimming display"
+      - light.turn_off: display_backlight
+  pages:
+    - id: desk_page
+      widgets:
+        - label:
+            align: TOP_MID
+            y: 40
+            text: "Desk Height"
+            text_font: montserrat_24
+        - label:
+            id: height_label
+            align: CENTER
+            text: "-- cm"
+            text_font: montserrat_48
+            hidden: true
+        - label:
+            id: mode_label
+            align: BOTTOM_MID
+            y: -20
+            text: "Turn to navigate"
+            text_font: montserrat_16
+            hidden: true
+        - spinner:
+            id: connecting_spinner
+            align: CENTER
+            height: 60
+            width: 60
+            spin_time: 1s
+            arc_length: 60deg
+            indicator:
+              arc_color: 0x0000FF
+              arc_width: 6
+        - label:
+            id: connecting_label
+            align: CENTER
+            y: 50
+            text: "Connecting..."
+            text_font: montserrat_16
+    - id: page_2
+      widgets:
+        - label:
+            id: presets_title
+            align: TOP_MID
+            y: 20
+            text: "Presets"
+            text_font: montserrat_24
+        - label:
+            id: presets_hint
+            align: BOTTOM_MID
+            y: -10
+            text: "Press to select"
+            text_font: montserrat_16
+        - button:
+            id: preset_67
+            align: CENTER
+            y: -50
+            width: 180
+            height: 50
+            checkable: true
+            widgets:
+              - label:
+                  align: LEFT_MID
+                  x: 10
+                  text: "${preset_1_icon}"
+                  text_font: mdi_32
+              - label:
+                  align: CENTER
+                  x: 20
+                  text: "${preset_1_height} cm"
+                  text_font: montserrat_24
+        - button:
+            id: preset_100
+            align: CENTER
+            y: 10
+            width: 180
+            height: 50
+            checkable: true
+            widgets:
+              - label:
+                  align: LEFT_MID
+                  x: 10
+                  text: "${preset_2_icon}"
+                  text_font: mdi_32
+              - label:
+                  align: CENTER
+                  x: 20
+                  text: "${preset_2_height} cm"
+                  text_font: montserrat_24
+        - button:
+            id: preset_108
+            align: CENTER
+            y: 70
+            width: 180
+            height: 50
+            checkable: true
+            widgets:
+              - label:
+                  align: LEFT_MID
+                  x: 10
+                  text: "${preset_3_icon}"
+                  text_font: mdi_32
+              - label:
+                  align: CENTER
+                  x: 20
+                  text: "${preset_3_height} cm"
+                  text_font: montserrat_24
+    - id: page_3
+      widgets:
+        - label:
+            align: CENTER
+            text: "Page 3"
+            text_font: montserrat_48
+        - label:
+            align: BOTTOM_MID
+            y: -20
+            text: "Placeholder"
+            text_font: montserrat_16
