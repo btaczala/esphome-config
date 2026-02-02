@@ -110,6 +110,18 @@ script:
           id: preset_108
           state:
             checked: !lambda 'return id(selected_preset) == 2;'
+      - lvgl.button.update:
+          id: cancel_preset_btn
+          state:
+            checked: !lambda 'return id(selected_preset) == 3;'
+      - lambda: |-
+          lv_obj_t *buttons[] = {
+            id(preset_67),
+            id(preset_100),
+            id(preset_108),
+            id(cancel_preset_btn)
+          };
+          lv_obj_scroll_to_view(buttons[id(selected_preset)], LV_ANIM_ON);
 
   - id: update_preset_labels
     then:
@@ -148,7 +160,7 @@ globals:
   - id: selected_preset
     type: int
     restore_value: no
-    initial_value: '0'  # 0 = preset 1, 1 = preset 2, 2 = preset 3
+    initial_value: '0'  # 0 = preset 1, 1 = preset 2, 2 = preset 3, 3 = cancel
   - id: current_page
     type: int
     restore_value: no
@@ -217,7 +229,7 @@ sensor:
                 then:
                   # On presets page and active - cycle through presets
                   - lambda: |-
-                      id(selected_preset) = (id(selected_preset) + 1) % 3;
+                      id(selected_preset) = (id(selected_preset) + 1) % 4;
                       ESP_LOGI("encoder", "Selected preset: %d", id(selected_preset));
                   - script.execute: update_preset_selection
                 else:
@@ -271,7 +283,7 @@ sensor:
                 then:
                   # On presets page and active - cycle through presets
                   - lambda: |-
-                      id(selected_preset) = (id(selected_preset) + 2) % 3;  // +2 mod 3 = -1 mod 3
+                      id(selected_preset) = (id(selected_preset) + 3) % 4;  // +3 mod 4 = -1 mod 4
                       ESP_LOGI("encoder", "Selected preset: %d", id(selected_preset));
                   - script.execute: update_preset_selection
                 else:
@@ -355,28 +367,42 @@ binary_sensor:
                 condition:
                   lambda: 'return id(current_page) == 1 && id(page_2_active);'
                 then:
-                  # On presets page and active - apply selected preset and deactivate
-                  - lambda: |-
-                      ESP_LOGI("preset", "Applying preset %d", id(selected_preset));
-                  - homeassistant.service:
-                      service: number.set_value
-                      data:
-                        entity_id: number.megadesk_height_cm_2
-                        value: !lambda |-
-                          float heights[] = {
-                            id(preset_1_height_num).state,
-                            id(preset_2_height_num).state,
-                            id(preset_3_height_num).state
-                          };
-                          float selected_height = heights[id(selected_preset)];
-                          ESP_LOGI("preset", "Setting desk to %.0f cm", selected_height);
-                          return selected_height;
-                  - lambda: |-
-                      ESP_LOGI("preset", "Preset applied, deactivating page 2");
-                      id(page_2_active) = false;
-                  - lvgl.label.update:
-                      id: presets_hint
-                      text: "Press to select"
+                  - if:
+                      condition:
+                        lambda: 'return id(selected_preset) == 3;'
+                      then:
+                        # Cancel selected - just deactivate without applying
+                        - lambda: |-
+                            ESP_LOGI("preset", "Cancel selected, deactivating page 2");
+                            id(page_2_active) = false;
+                        - lvgl.label.update:
+                            id: presets_hint
+                            text: "Press to select"
+                        - script.execute: update_preset_selection
+                      else:
+                        # On presets page and active - apply selected preset and deactivate
+                        - lambda: |-
+                            ESP_LOGI("preset", "Applying preset %d", id(selected_preset));
+                        - homeassistant.service:
+                            service: number.set_value
+                            data:
+                              entity_id: number.megadesk_height_cm_2
+                              value: !lambda |-
+                                float heights[] = {
+                                  id(preset_1_height_num).state,
+                                  id(preset_2_height_num).state,
+                                  id(preset_3_height_num).state
+                                };
+                                float selected_height = heights[id(selected_preset)];
+                                ESP_LOGI("preset", "Setting desk to %.0f cm", selected_height);
+                                return selected_height;
+                        - lambda: |-
+                            ESP_LOGI("preset", "Preset applied, deactivating page 2");
+                            id(page_2_active) = false;
+                        - lvgl.label.update:
+                            id: presets_hint
+                            text: "Press to select"
+                        - script.execute: update_preset_selection
                 else:
                   # On desk page - toggle encoder mode
                   - lambda: |-
@@ -518,6 +544,7 @@ font:
       - "${preset_1_icon}"
       - "${preset_2_icon}"
       - "${preset_3_icon}"
+      - "\U000F0156"  # close
 
 lvgl:
   displays:
@@ -573,72 +600,98 @@ lvgl:
         - label:
             id: presets_title
             align: TOP_MID
-            y: 20
+            y: 25
             text: "Presets"
             text_font: montserrat_24
         - label:
             id: presets_hint
             align: BOTTOM_MID
-            y: -10
+            y: -15
             text: "Press to select"
             text_font: montserrat_16
-        - button:
-            id: preset_67
+        - obj:
+            id: presets_container
             align: CENTER
-            y: -50
-            width: 180
-            height: 50
-            checkable: true
+            width: 190
+            height: 140
+            scrollbar_mode: auto
+            bg_opa: TRANSP
+            border_width: 0
+            pad_all: 0
+            layout:
+              type: flex
+              flex_flow: COLUMN
+              flex_align_main: START
+              flex_align_cross: CENTER
+              pad_row: 8
             widgets:
-              - label:
-                  align: LEFT_MID
-                  x: 10
-                  text: "${preset_1_icon}"
-                  text_font: mdi_32
-              - label:
-                  id: preset_1_label
-                  align: CENTER
-                  x: 20
-                  text: "${preset_1_height} cm"
-                  text_font: montserrat_24
-        - button:
-            id: preset_100
-            align: CENTER
-            y: 10
-            width: 180
-            height: 50
-            checkable: true
-            widgets:
-              - label:
-                  align: LEFT_MID
-                  x: 10
-                  text: "${preset_2_icon}"
-                  text_font: mdi_32
-              - label:
-                  id: preset_2_label
-                  align: CENTER
-                  x: 20
-                  text: "${preset_2_height} cm"
-                  text_font: montserrat_24
-        - button:
-            id: preset_108
-            align: CENTER
-            y: 70
-            width: 180
-            height: 50
-            checkable: true
-            widgets:
-              - label:
-                  align: LEFT_MID
-                  x: 10
-                  text: "${preset_3_icon}"
-                  text_font: mdi_32
-              - label:
-                  id: preset_3_label
-                  align: CENTER
-                  x: 20
-                  text: "${preset_3_height} cm"
-                  text_font: montserrat_24
+              - button:
+                  id: preset_67
+                  width: 180
+                  height: 42
+                  checkable: true
+                  widgets:
+                    - label:
+                        align: LEFT_MID
+                        x: 10
+                        text: "${preset_1_icon}"
+                        text_font: mdi_32
+                    - label:
+                        id: preset_1_label
+                        align: CENTER
+                        x: 20
+                        text: "${preset_1_height} cm"
+                        text_font: montserrat_24
+              - button:
+                  id: preset_100
+                  width: 180
+                  height: 42
+                  checkable: true
+                  widgets:
+                    - label:
+                        align: LEFT_MID
+                        x: 10
+                        text: "${preset_2_icon}"
+                        text_font: mdi_32
+                    - label:
+                        id: preset_2_label
+                        align: CENTER
+                        x: 20
+                        text: "${preset_2_height} cm"
+                        text_font: montserrat_24
+              - button:
+                  id: preset_108
+                  width: 180
+                  height: 42
+                  checkable: true
+                  widgets:
+                    - label:
+                        align: LEFT_MID
+                        x: 10
+                        text: "${preset_3_icon}"
+                        text_font: mdi_32
+                    - label:
+                        id: preset_3_label
+                        align: CENTER
+                        x: 20
+                        text: "${preset_3_height} cm"
+                        text_font: montserrat_24
+              - button:
+                  id: cancel_preset_btn
+                  width: 180
+                  height: 42
+                  checkable: true
+                  widgets:
+                    - label:
+                        align: LEFT_MID
+                        x: 10
+                        text: "\U000F0156"
+                        text_font: mdi_32
+                    - label:
+                        align: CENTER
+                        x: 20
+                        text: "Cancel"
+                        text_font: montserrat_24
     - id: page_3
       widgets:
         - label:
