@@ -42,9 +42,7 @@ api:
         ESP_LOGI("api", "Home Assistant connected!");
         id(ha_connected) = true;
     - lvgl.widget.hide:
-        id: connecting_spinner
-    - lvgl.widget.hide:
-        id: connecting_label
+        id: connecting_overlay
     - lvgl.widget.show:
         id: height_label
     - lvgl.widget.show:
@@ -56,9 +54,7 @@ api:
         ESP_LOGI("api", "Home Assistant disconnected!");
         id(ha_connected) = false;
     - lvgl.widget.show:
-        id: connecting_spinner
-    - lvgl.widget.show:
-        id: connecting_label
+        id: connecting_overlay
     - lvgl.widget.hide:
         id: height_label
     - lvgl.widget.hide:
@@ -164,7 +160,7 @@ globals:
   - id: current_page
     type: int
     restore_value: no
-    initial_value: '0'  # 0 = page 1 (desk), 1 = page 2 (presets), 2 = page 3
+    initial_value: '0'  # 0 = about, 1 = desk, 2 = presets
   - id: page_2_active
     type: bool
     restore_value: no
@@ -225,7 +221,7 @@ sensor:
           else:
             - if:
                 condition:
-                  lambda: 'return id(current_page) == 1 && id(page_2_active);'
+                  lambda: 'return id(current_page) == 2 && id(page_2_active);'
                 then:
                   # On presets page and active - cycle through presets
                   - lambda: |-
@@ -279,7 +275,7 @@ sensor:
           else:
             - if:
                 condition:
-                  lambda: 'return id(current_page) == 1 && id(page_2_active);'
+                  lambda: 'return id(current_page) == 2 && id(page_2_active);'
                 then:
                   # On presets page and active - cycle through presets
                   - lambda: |-
@@ -316,6 +312,11 @@ sensor:
             char buf[32];
             snprintf(buf, sizeof(buf), "%.1f cm", x);
             return std::string(buf);
+      - lvgl.resume:
+      - lvgl.widget.redraw:
+      - lvgl.page.show:
+          id: desk_page
+      - light.turn_on: display_backlight
 
   - platform: homeassistant
     id: desk_target_height
@@ -323,6 +324,31 @@ sensor:
     on_value:
       - lambda: |-
           ESP_LOGI("encoder", "Target height updated to: %.1f", x);
+
+  - platform: wifi_signal
+    name: "WiFi Signal"
+    id: wifi_signal_db
+    update_interval: 60s
+    entity_category: diagnostic
+
+  - platform: copy
+    source_id: wifi_signal_db
+    name: "WiFi Signal Percent"
+    filters:
+      - lambda: return min(max(2 * (x + 100.0), 0.0), 100.0);
+    unit_of_measurement: "%"
+    entity_category: diagnostic
+
+  - platform: uptime
+    name: "Uptime"
+    update_interval: 60s
+
+text_sensor:
+  - platform: wifi_info
+    ip_address:
+      name: "IP Address"
+    mac_address:
+      name: "MAC Address"
 
 time:
   # RTC
@@ -353,7 +379,7 @@ binary_sensor:
           ESP_LOGI("button", "Button pressed on page %d, page_2_active: %d", id(current_page), id(page_2_active));
       - if:
           condition:
-            lambda: 'return id(current_page) == 1 && !id(page_2_active);'
+            lambda: 'return id(current_page) == 2 && !id(page_2_active);'
           then:
             # On presets page but not active - activate it
             - lambda: |-
@@ -365,7 +391,7 @@ binary_sensor:
           else:
             - if:
                 condition:
-                  lambda: 'return id(current_page) == 1 && id(page_2_active);'
+                  lambda: 'return id(current_page) == 2 && id(page_2_active);'
                 then:
                   - if:
                       condition:
@@ -404,27 +430,31 @@ binary_sensor:
                             text: "Press to select"
                         - script.execute: update_preset_selection
                 else:
-                  # On desk page - toggle encoder mode
-                  - lambda: |-
-                      int old_mode = id(encoder_mode);
-                      id(encoder_mode) = (id(encoder_mode) == 0) ? 1 : 0;
-                      ESP_LOGI("encoder", "Button pressed! Mode switched from %d to %d", old_mode, id(encoder_mode));
                   - if:
                       condition:
-                        lambda: 'return id(encoder_mode) == 0 && id(pending_height_change) != 0.0;'
+                        lambda: 'return id(current_page) == 1;'
                       then:
+                        # On desk page - toggle encoder mode
                         - lambda: |-
-                            ESP_LOGI("encoder", "Switching to nav mode, applying pending changes first");
-                        - script.stop: delayed_height_update
-                        - script.execute: apply_height_change
-                  - lvgl.label.update:
-                      id: mode_label
-                      text: !lambda |-
-                        if (id(encoder_mode) == 1) {
-                          return std::string("Turn to adjust");
-                        } else {
-                          return std::string("Turn to navigate");
-                        }
+                            int old_mode = id(encoder_mode);
+                            id(encoder_mode) = (id(encoder_mode) == 0) ? 1 : 0;
+                            ESP_LOGI("encoder", "Button pressed! Mode switched from %d to %d", old_mode, id(encoder_mode));
+                        - if:
+                            condition:
+                              lambda: 'return id(encoder_mode) == 0 && id(pending_height_change) != 0.0;'
+                            then:
+                              - lambda: |-
+                                  ESP_LOGI("encoder", "Switching to nav mode, applying pending changes first");
+                              - script.stop: delayed_height_update
+                              - script.execute: apply_height_change
+                        - lvgl.label.update:
+                            id: mode_label
+                            text: !lambda |-
+                              if (id(encoder_mode) == 1) {
+                                return std::string("Turn to adjust");
+                              } else {
+                                return std::string("Turn to navigate");
+                              }
 
   - platform: gpio
     name: Hold Button
@@ -456,6 +486,7 @@ display:
     dc_pin: GPIO4
     invert_colors: false
     rotation: 180
+    color_order: "rgb"
 
 number:
   - platform: template
@@ -536,6 +567,12 @@ light:
     id: display_backlight
     default_transition_length: 0s
 
+image:
+  - file: https://pbs.twimg.com/media/B7KD29LIIAEwqmN.jpg
+    id: megadesk_icon
+    resize: 100x100
+    type: RGB565
+
 font:
   - file: "materialdesignicons-webfont.ttf"
     id: mdi_32
@@ -558,7 +595,43 @@ lvgl:
       - light.turn_off: display_backlight
       - lvgl.pause:
           show_snow: true
+  top_layer:
+    widgets:
+      - obj:
+          id: connecting_overlay
+          width: 100%
+          height: 100%
+          bg_color: 0xffffff
+          bg_opa: COVER
+          widgets:
+            - spinner:
+                id: connecting_spinner
+                align: CENTER
+                height: 60
+                width: 60
+                spin_time: 1s
+                arc_length: 60deg
+                indicator:
+                  arc_color: 0x0000FF
+                  arc_width: 6
+            - label:
+                id: connecting_label
+                align: CENTER
+                y: 50
+                text: "Connecting..."
+                text_font: montserrat_16
   pages:
+    - id: about_page
+      widgets:
+        - image:
+            align: CENTER
+            y: -30
+            src: megadesk_icon
+        - label:
+            align: CENTER
+            y: 50
+            text: "Ikea Megadesk"
+            text_font: montserrat_24
     - id: desk_page
       widgets:
         - label:
@@ -579,23 +652,7 @@ lvgl:
             text: "Turn to navigate"
             text_font: montserrat_16
             hidden: true
-        - spinner:
-            id: connecting_spinner
-            align: CENTER
-            height: 60
-            width: 60
-            spin_time: 1s
-            arc_length: 60deg
-            indicator:
-              arc_color: 0x0000FF
-              arc_width: 6
-        - label:
-            id: connecting_label
-            align: CENTER
-            y: 50
-            text: "Connecting..."
-            text_font: montserrat_16
-    - id: page_2
+    - id: presets_page
       widgets:
         - label:
             id: presets_title
@@ -692,14 +749,3 @@ lvgl:
                         x: 20
                         text: "Cancel"
                         text_font: montserrat_24
-    - id: page_3
-      widgets:
-        - label:
-            align: CENTER
-            text: "Page 3"
-            text_font: montserrat_48
-        - label:
-            align: BOTTOM_MID
-            y: -20
-            text: "Placeholder"
-            text_font: montserrat_16
