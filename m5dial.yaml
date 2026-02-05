@@ -308,15 +308,9 @@ sensor:
       - lvgl.label.update:
           id: height_label
           text: !lambda |-
-            ESP_LOGI("encoder", "value changed");
             char buf[32];
             snprintf(buf, sizeof(buf), "%.1f cm", x);
             return std::string(buf);
-      - lvgl.resume:
-      - lvgl.widget.redraw:
-      - lvgl.page.show:
-          id: desk_page
-      - light.turn_on: display_backlight
 
   - platform: homeassistant
     id: desk_target_height
@@ -484,9 +478,9 @@ display:
     cs_pin: GPIO7
     reset_pin: GPIO8
     dc_pin: GPIO4
-    invert_colors: false
+    invert_colors: true
     rotation: 180
-    color_order: "rgb"
+    color_order: "bgr"
 
 number:
   - platform: template
@@ -570,7 +564,7 @@ light:
 image:
   - file: https://pbs.twimg.com/media/B7KD29LIIAEwqmN.jpg
     id: megadesk_icon
-    resize: 100x100
+    resize: 200x200
     type: RGB565
 
 font:
@@ -588,6 +582,7 @@ lvgl:
     - round_display
   touchscreens:
     - touch
+  bg_color: 0x000000
   on_idle:
     timeout: !lambda "return (id(display_timeout).state * 1000);"
     then:
@@ -599,9 +594,11 @@ lvgl:
     widgets:
       - obj:
           id: connecting_overlay
-          width: 100%
-          height: 100%
-          bg_color: 0xffffff
+          width: 260
+          height: 260
+          bg_color: 0x000000
+          x: -10
+          y: -10
           bg_opa: COVER
           widgets:
             - spinner:
@@ -609,10 +606,12 @@ lvgl:
                 align: CENTER
                 height: 60
                 width: 60
-                spin_time: 1s
+                arc_color: 0x000000
+                arc_rounded: true
+                spin_time: 2s
                 arc_length: 60deg
                 indicator:
-                  arc_color: 0x0000FF
+                  arc_color: 0x00FFFF
                   arc_width: 6
             - label:
                 id: connecting_label
@@ -620,30 +619,36 @@ lvgl:
                 y: 50
                 text: "Connecting..."
                 text_font: montserrat_16
+                text_color: 0xffffff
   pages:
     - id: about_page
+      bg_color: 0x000000
       widgets:
         - image:
             align: CENTER
-            y: -30
+            y: -20
             src: megadesk_icon
         - label:
-            align: CENTER
-            y: 50
+            align: BOTTOM_MID
+            y: -40
             text: "Ikea Megadesk"
             text_font: montserrat_24
+            text_color: 0xffffff
     - id: desk_page
+      bg_color: 0x000000
       widgets:
         - label:
             align: TOP_MID
             y: 40
             text: "Desk Height"
             text_font: montserrat_24
+            text_color: 0xffffff
         - label:
             id: height_label
             align: CENTER
             text: "-- cm"
             text_font: montserrat_48
+            text_color: 0xffffff
             hidden: true
         - label:
             id: mode_label
@@ -651,8 +656,10 @@ lvgl:
             y: -20
             text: "Turn to navigate"
             text_font: montserrat_16
+            text_color: 0xffffff
             hidden: true
     - id: presets_page
+      bg_color: 0x000000
       widgets:
         - label:
             id: presets_title
@@ -660,12 +667,14 @@ lvgl:
             y: 25
             text: "Presets"
             text_font: montserrat_24
+            text_color: 0xffffff
         - label:
             id: presets_hint
             align: BOTTOM_MID
             y: -15
             text: "Press to select"
             text_font: montserrat_16
+            text_color: 0xffffff
         - obj:
             id: presets_container
             align: CENTER
