@@ -1,0 +1,108 @@
+substitutions:
+  name: waveshare-s3-touch
+  friendly_name: Waveshare S3 4.3
+
+esphome:
+  name: "${name}"
+  platformio_options:
+    board_build.flash_mode: dio
+  on_boot:
+    - output.turn_on: display_enable
+    - light.turn_on: backlight
+
+
+esp32:
+  board: esp32-s3-devkitc-1
+  variant: esp32s3
+  framework:
+    type: esp-idf
+    sdkconfig_options:
+      CONFIG_ESP32S3_DEFAULT_CPU_FREQ_240: "y"
+      CONFIG_ESP32S3_DATA_CACHE_64KB: "y"
+      CONFIG_SPIRAM_FETCH_INSTRUCTIONS: y
+      CONFIG_SPIRAM_RODATA: y
+
+logger:
+
+ch422g:
+  - id: ch422g_hub
+
+output:
+  - platform: ledc
+    pin: 6
+    id: backlight_output
+  - platform: gpio
+    pin:
+      ch422g: ch422g_hub
+      number: 2
+    id: display_enable
+
+light:
+  - platform: monochromatic
+    output: backlight_output
+    name: Backlight
+    id: backlight
+    default_transition_length: 0s
+    restore_mode: ALWAYS_ON
+
+switch:
+  - platform: template
+    name: Screen
+    id: screen_switch
+    restore_mode: ALWAYS_ON
+    optimistic: true
+    turn_on_action:
+      - lvgl.resume
+      - output.set_level:
+          id: backlight_output
+          level: 100%
+    turn_off_action:
+      - lvgl.pause:
+          show_snow: false
+      - output.set_level:
+          id: backlight_output
+          level: 0%
+
+psram:
+  mode: octal
+  speed: 80MHz
+
+i2c:
+  sda: 8
+  scl: 9
+  scan: true
+  frequency: 400kHz
+
+touchscreen:
+  - platform: gt911
+    id: my_touchscreen
+    interrupt_pin: 4
+    reset_pin:
+      ch422g: ch422g_hub
+      number: 1
+    on_touch:
+      - if:
+          condition:
+            switch.is_off: screen_switch
+          then:
+            - switch.turn_on: screen_switch
+# Example minimal configuration entry
+display:
+  - platform: mipi_rgb
+    model: ESP32-S3-TOUCH-LCD-4.3
+    id: touch_4_3
+
+api:
+  on_client_connected:
+    - lvgl.widget.hide: boot_screen
+
+ota:
+  - platform: esphome
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
+packages:
+  lvgl: !include solar-ev-charger/lvgl.yaml
+
