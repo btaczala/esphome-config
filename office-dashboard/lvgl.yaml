@@ -3,6 +3,15 @@ lvgl:
     - touch_4_3
   touchscreens:
     - my_touchscreen
+  on_idle:
+    - timeout: 2min
+      then:
+        - lvgl.page.show: screensaver_page
+        - lambda: id(screensaver_active) = true;
+    - timeout: 10min
+      then:
+        - switch.turn_off: screen_switch
+        - lambda: id(screensaver_active) = false;
   top_layer:
     widgets:
       - obj:
@@ -33,3 +42,421 @@ lvgl:
                 indicator:
                   arc_color: 0x18bcf2
                   arc_width: 8
+
+  pages:
+    - id: main_page
+      bg_color: 0x0f1923
+      bg_opa: COVER
+      widgets:
+
+        # ── TOP BAR (800×65) ─────────────────────────────────────────────────
+        - obj:
+            x: 0
+            y: 0
+            width: 800
+            height: 65
+            bg_color: 0x0a1020
+            bg_opa: COVER
+            radius: 0
+            border_width: 0
+            pad_all: 0
+            widgets:
+              - label:
+                  id: time_label
+                  align: LEFT_MID
+                  x: 20
+                  text: "--:--"
+                  text_font: montserrat_48
+                  text_color: 0xffffff
+              - label:
+                  id: date_label
+                  align: CENTER
+                  text: "---"
+                  text_font: montserrat_20
+                  text_color: 0x8899aa
+              - obj:
+                  align: RIGHT_MID
+                  x: -15
+                  width: 220
+                  height: 50
+                  bg_opa: TRANSP
+                  border_width: 0
+                  pad_all: 0
+                  widgets:
+                    - label:
+                        id: occupancy_dot
+                        align: LEFT_MID
+                        text: "\U000F0D91"
+                        text_font: mdi_fonts
+                        text_color: 0x555555
+                    - label:
+                        id: occupancy_text
+                        align: LEFT_MID
+                        x: 40
+                        text: "Unoccupied"
+                        text_font: montserrat_20
+                        text_color: 0x888888
+
+        # ── WEATHER CARD (x=10, w=248) ───────────────────────────────────────
+        - obj:
+            x: 10
+            y: 75
+            width: 248
+            height: 370
+            bg_color: 0x162030
+            bg_opa: COVER
+            radius: 12
+            border_width: 1
+            border_color: 0x1e3050
+            pad_all: 12
+            widgets:
+              - label:
+                  align: TOP_MID
+                  y: 5
+                  text: "WEATHER"
+                  text_font: montserrat_14
+                  text_color: 0x4a6a8a
+              - label:
+                  id: weather_condition_label
+                  align: TOP_MID
+                  y: 30
+                  text: "---"
+                  text_font: montserrat_18
+                  text_color: 0xccddee
+              - label:
+                  id: weather_temp_label
+                  align: CENTER
+                  y: -30
+                  text: "--°C"
+                  text_font: montserrat_48
+                  text_color: 0x18bcf2
+              - obj:
+                  align: CENTER
+                  y: 30
+                  width: 90%
+                  height: 1
+                  bg_color: 0x1e3050
+                  bg_opa: COVER
+                  border_width: 0
+                  pad_all: 0
+              - label:
+                  align: BOTTOM_MID
+                  y: -40
+                  text: "Humidity"
+                  text_font: montserrat_14
+                  text_color: 0x4a6a8a
+              - label:
+                  id: weather_humidity_label
+                  align: BOTTOM_MID
+                  y: -15
+                  text: "--%"
+                  text_font: montserrat_24
+                  text_color: 0x8899aa
+
+        # ── FLOOR HEATING CARD (x=268, w=253) ────────────────────────────────
+        - obj:
+            x: 268
+            y: 75
+            width: 253
+            height: 370
+            bg_color: 0x162030
+            bg_opa: COVER
+            radius: 12
+            border_width: 1
+            border_color: 0x1e3050
+            pad_all: 12
+            widgets:
+              - label:
+                  align: TOP_MID
+                  y: 5
+                  text: "FLOOR HEATING"
+                  text_font: montserrat_14
+                  text_color: 0x4a6a8a
+              - label:
+                  align: TOP_MID
+                  y: 32
+                  text: "Current"
+                  text_font: montserrat_12
+                  text_color: 0x4a6a8a
+              - label:
+                  id: floor_temp_label
+                  align: TOP_MID
+                  y: 52
+                  text: "--.-°C"
+                  text_font: montserrat_48
+                  text_color: 0xff7030
+              - obj:
+                  align: CENTER
+                  y: 0
+                  width: 90%
+                  height: 1
+                  bg_color: 0x1e3050
+                  bg_opa: COVER
+                  border_width: 0
+                  pad_all: 0
+              - label:
+                  align: CENTER
+                  y: 20
+                  text: "Set point"
+                  text_font: montserrat_12
+                  text_color: 0x4a6a8a
+              - label:
+                  id: floor_setpoint_label
+                  align: CENTER
+                  y: 42
+                  text: "--°C"
+                  text_font: montserrat_28
+                  text_color: 0xffffff
+              - label:
+                  id: floor_state_label
+                  align: CENTER
+                  y: 80
+                  text: "---"
+                  text_font: montserrat_16
+                  text_color: 0x8899aa
+              - button:
+                  align: BOTTOM_LEFT
+                  x: 0
+                  y: -8
+                  width: 108
+                  height: 42
+                  bg_color: 0x223355
+                  border_width: 0
+                  widgets:
+                    - label:
+                        align: CENTER
+                        text: "OFF"
+                        text_font: montserrat_18
+                        text_color: 0x8899aa
+                  on_click:
+                    - homeassistant.service:
+                        service: climate.turn_off
+                        data:
+                          entity_id: ${floor_heating_entity}
+              - button:
+                  align: BOTTOM_RIGHT
+                  x: 0
+                  y: -8
+                  width: 108
+                  height: 42
+                  bg_color: 0xff6020
+                  border_width: 0
+                  widgets:
+                    - label:
+                        align: CENTER
+                        text: "HEAT"
+                        text_font: montserrat_18
+                        text_color: 0xffffff
+                  on_click:
+                    - homeassistant.service:
+                        service: climate.set_hvac_mode
+                        data:
+                          entity_id: ${floor_heating_entity}
+                          hvac_mode: heat
+
+        # ── HVAC CARD (x=531, w=259) ─────────────────────────────────────────
+        - obj:
+            x: 531
+            y: 75
+            width: 259
+            height: 370
+            bg_color: 0x162030
+            bg_opa: COVER
+            radius: 12
+            border_width: 1
+            border_color: 0x1e3050
+            pad_all: 12
+            widgets:
+              - label:
+                  align: TOP_MID
+                  y: 5
+                  text: "HVAC"
+                  text_font: montserrat_14
+                  text_color: 0x4a6a8a
+              - label:
+                  align: TOP_MID
+                  y: 32
+                  text: "Current"
+                  text_font: montserrat_12
+                  text_color: 0x4a6a8a
+              - label:
+                  id: hvac_temp_label
+                  align: TOP_MID
+                  y: 52
+                  text: "--.-°C"
+                  text_font: montserrat_48
+                  text_color: 0x18bcf2
+              - obj:
+                  align: CENTER
+                  y: 0
+                  width: 90%
+                  height: 1
+                  bg_color: 0x1e3050
+                  bg_opa: COVER
+                  border_width: 0
+                  pad_all: 0
+              - label:
+                  align: CENTER
+                  y: 20
+                  text: "Set point"
+                  text_font: montserrat_12
+                  text_color: 0x4a6a8a
+              - label:
+                  id: hvac_setpoint_label
+                  align: CENTER
+                  y: 42
+                  text: "--°C"
+                  text_font: montserrat_28
+                  text_color: 0xffffff
+              - label:
+                  id: hvac_mode_label
+                  align: CENTER
+                  y: 80
+                  text: "---"
+                  text_font: montserrat_16
+                  text_color: 0x8899aa
+              - button:
+                  align: BOTTOM_LEFT
+                  x: 0
+                  y: -8
+                  width: 72
+                  height: 42
+                  bg_color: 0x223355
+                  border_width: 0
+                  widgets:
+                    - label:
+                        align: CENTER
+                        text: "OFF"
+                        text_font: montserrat_16
+                        text_color: 0x8899aa
+                  on_click:
+                    - homeassistant.service:
+                        service: climate.turn_off
+                        data:
+                          entity_id: ${hvac_entity}
+              - button:
+                  align: BOTTOM_MID
+                  y: -8
+                  width: 72
+                  height: 42
+                  bg_color: 0xff6020
+                  border_width: 0
+                  widgets:
+                    - label:
+                        align: CENTER
+                        text: "HEAT"
+                        text_font: montserrat_16
+                        text_color: 0xffffff
+                  on_click:
+                    - homeassistant.service:
+                        service: climate.set_hvac_mode
+                        data:
+                          entity_id: ${hvac_entity}
+                          hvac_mode: heat
+              - button:
+                  align: BOTTOM_RIGHT
+                  x: 0
+                  y: -8
+                  width: 72
+                  height: 42
+                  bg_color: 0x0060cc
+                  border_width: 0
+                  widgets:
+                    - label:
+                        align: CENTER
+                        text: "COOL"
+                        text_font: montserrat_16
+                        text_color: 0xffffff
+                  on_click:
+                    - homeassistant.service:
+                        service: climate.set_hvac_mode
+                        data:
+                          entity_id: ${hvac_entity}
+                          hvac_mode: cool
+
+        # ── PAGE NAV FOOTER ──────────────────────────────────────────────────
+        - obj:
+            x: 0
+            y: 450
+            width: 800
+            height: 30
+            bg_color: 0x0a1020
+            bg_opa: COVER
+            radius: 0
+            border_width: 0
+            pad_all: 0
+            widgets:
+              - obj:
+                  align: CENTER
+                  x: -14
+                  width: 10
+                  height: 10
+                  radius: 5
+                  bg_color: 0x18bcf2
+                  border_width: 0
+              - button:
+                  align: CENTER
+                  x: 14
+                  width: 10
+                  height: 10
+                  radius: 5
+                  bg_color: 0x334466
+                  border_width: 0
+                  on_click:
+                    - lvgl.page.show: page_2
+
+    - id: page_2
+      bg_color: 0x0f1923
+      bg_opa: COVER
+      widgets:
+
+        # ── PAGE NAV FOOTER ──────────────────────────────────────────────────
+        - obj:
+            x: 0
+            y: 450
+            width: 800
+            height: 30
+            bg_color: 0x0a1020
+            bg_opa: COVER
+            radius: 0
+            border_width: 0
+            pad_all: 0
+            widgets:
+              - button:
+                  align: CENTER
+                  x: -14
+                  width: 10
+                  height: 10
+                  radius: 5
+                  bg_color: 0x334466
+                  border_width: 0
+                  on_click:
+                    - lvgl.page.show: main_page
+              - obj:
+                  align: CENTER
+                  x: 14
+                  width: 10
+                  height: 10
+                  radius: 5
+                  bg_color: 0x18bcf2
+                  border_width: 0
+
+    # ── SCREENSAVER PAGE ─────────────────────────────────────────────────────
+    - id: screensaver_page
+      bg_color: 0x000000
+      bg_opa: COVER
+      widgets:
+        - label:
+            id: screensaver_time_label
+            align: CENTER
+            y: -30
+            text: "--:--"
+            text_font: montserrat_48
+            text_color: 0x18bcf2
+        - label:
+            id: screensaver_date_label
+            align: CENTER
+            y: 30
+            text: "---"
+            text_font: montserrat_24
+            text_color: 0x4a6a8a

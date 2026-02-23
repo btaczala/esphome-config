@@ -1,6 +1,13 @@
 substitutions:
   name: waveshare-s3-touch
   friendly_name: Waveshare S3 4.3
+  # Entity IDs – adjust to match your Home Assistant setup
+  weather_entity: weather.forecast_home
+  weather_temp_entity: sensor.pirateweather_temperature
+  weather_humidity_entity: sensor.pirateweather_humidity
+  floor_heating_entity: climate.termostat_biuro_thermostat
+  hvac_entity: climate.klimatyzacja_biuro
+  occupancy_entity: binary_sensor.zajetosc_biura
 
 esphome:
   name: "${name}"
@@ -9,7 +16,6 @@ esphome:
   on_boot:
     - output.turn_on: display_enable
     - light.turn_on: backlight
-
 
 esp32:
   board: esp32-s3-devkitc-1
@@ -73,6 +79,20 @@ i2c:
   scan: true
   frequency: 400kHz
 
+globals:
+  - id: swipe_start_x
+    type: int
+    initial_value: '0'
+  - id: swipe_current_x
+    type: int
+    initial_value: '0'
+  - id: swipe_tracking
+    type: bool
+    initial_value: 'false'
+  - id: screensaver_active
+    type: bool
+    initial_value: 'false'
+
 touchscreen:
   - platform: gt911
     id: my_touchscreen
@@ -85,16 +105,239 @@ touchscreen:
           condition:
             switch.is_off: screen_switch
           then:
+            # Wake from blank: restore main page
             - switch.turn_on: screen_switch
-# Example minimal configuration entry
+            - lvgl.page.show: main_page
+            - lambda: id(screensaver_active) = false;
+          else:
+            - if:
+                condition:
+                  lambda: 'return id(screensaver_active);'
+                then:
+                  # Dismiss screensaver on any touch
+                  - lvgl.page.show: main_page
+                  - lambda: id(screensaver_active) = false;
+                else:
+                  - lambda: |-
+                      if (!id(swipe_tracking)) {
+                        id(swipe_start_x) = touch.x;
+                        id(swipe_tracking) = true;
+                      }
+                      id(swipe_current_x) = touch.x;
+    on_release:
+      - lambda: id(swipe_tracking) = false;
+      - if:
+          condition:
+            lambda: 'return !id(screensaver_active) && (id(swipe_start_x) - id(swipe_current_x)) > 80;'
+          then:
+            - lvgl.page.show: page_2
+      - if:
+          condition:
+            lambda: 'return !id(screensaver_active) && (id(swipe_current_x) - id(swipe_start_x)) > 80;'
+          then:
+            - lvgl.page.show: main_page
+
 display:
   - platform: mipi_rgb
     model: ESP32-S3-TOUCH-LCD-4.3
     id: touch_4_3
 
+time:
+  - platform: homeassistant
+    id: esptime
+    on_time_sync:
+      then:
+        - lvgl.label.update:
+            id: time_label
+            text: !lambda |-
+              char buf[6];
+              auto t = id(esptime).now();
+              snprintf(buf, sizeof(buf), "%02d:%02d", t.hour, t.minute);
+              return std::string(buf);
+        - lvgl.label.update:
+            id: date_label
+            text: !lambda 'return id(esptime).now().strftime("%a, %b %d");'
+        - lvgl.label.update:
+            id: screensaver_time_label
+            text: !lambda |-
+              char buf[6];
+              auto t = id(esptime).now();
+              snprintf(buf, sizeof(buf), "%02d:%02d", t.hour, t.minute);
+              return std::string(buf);
+        - lvgl.label.update:
+            id: screensaver_date_label
+            text: !lambda 'return id(esptime).now().strftime("%a, %b %d");'
+    on_time:
+      - seconds: 0
+        minutes: '*'
+        then:
+          - lvgl.label.update:
+              id: time_label
+              text: !lambda |-
+                char buf[6];
+                auto t = id(esptime).now();
+                snprintf(buf, sizeof(buf), "%02d:%02d", t.hour, t.minute);
+                return std::string(buf);
+          - lvgl.label.update:
+              id: date_label
+              text: !lambda 'return id(esptime).now().strftime("%a, %b %d");'
+          - lvgl.label.update:
+              id: screensaver_time_label
+              text: !lambda |-
+                char buf[6];
+                auto t = id(esptime).now();
+                snprintf(buf, sizeof(buf), "%02d:%02d", t.hour, t.minute);
+                return std::string(buf);
+          - lvgl.label.update:
+              id: screensaver_date_label
+              text: !lambda 'return id(esptime).now().strftime("%a, %b %d");'
+
+sensor:
+  # Weather – adjust entity IDs to match your HA setup
+  - platform: homeassistant
+    id: outdoor_temperature
+    entity_id: ${weather_temp_entity}
+    on_value:
+      - lvgl.label.update:
+          id: weather_temp_label
+          text: !lambda |-
+            char buf[8];
+            snprintf(buf, sizeof(buf), "%.0f°C", x);
+            return std::string(buf);
+
+  - platform: homeassistant
+    id: outdoor_humidity
+    entity_id: ${weather_humidity_entity}
+    on_value:
+      - lvgl.label.update:
+          id: weather_humidity_label
+          text: !lambda |-
+            char buf[8];
+            snprintf(buf, sizeof(buf), "%.0f%%", x);
+            return std::string(buf);
+
+  # Floor heating – reads attributes from climate entity
+  - platform: homeassistant
+    id: floor_current_temp
+    entity_id: ${floor_heating_entity}
+    attribute: current_temperature
+    on_value:
+      - lvgl.label.update:
+          id: floor_temp_label
+          text: !lambda |-
+            char buf[8];
+            snprintf(buf, sizeof(buf), "%.1f°C", x);
+            return std::string(buf);
+
+  - platform: homeassistant
+    id: floor_setpoint
+    entity_id: ${floor_heating_entity}
+    attribute: temperature
+    on_value:
+      - lvgl.label.update:
+          id: floor_setpoint_label
+          text: !lambda |-
+            char buf[8];
+            snprintf(buf, sizeof(buf), "%.0f°C", x);
+            return std::string(buf);
+
+  # HVAC – reads attributes from climate entity
+  - platform: homeassistant
+    id: hvac_current_temp
+    entity_id: ${hvac_entity}
+    attribute: current_temperature
+    on_value:
+      - lvgl.label.update:
+          id: hvac_temp_label
+          text: !lambda |-
+            char buf[8];
+            snprintf(buf, sizeof(buf), "%.1f°C", x);
+            return std::string(buf);
+
+  - platform: homeassistant
+    id: hvac_setpoint
+    entity_id: ${hvac_entity}
+    attribute: temperature
+    on_value:
+      - lvgl.label.update:
+          id: hvac_setpoint_label
+          text: !lambda |-
+            char buf[8];
+            snprintf(buf, sizeof(buf), "%.0f°C", x);
+            return std::string(buf);
+
+  - platform: wifi_signal
+    name: WiFi Signal
+    update_interval: 60s
+    entity_category: diagnostic
+
+text_sensor:
+  # Weather condition state (e.g. "sunny", "cloudy") – adjust entity to your weather integration
+  - platform: homeassistant
+    id: weather_condition
+    entity_id: ${weather_entity}
+    on_value:
+      - lvgl.label.update:
+          id: weather_condition_label
+          text: !lambda 'return x;'
+
+  # Climate entity state is the HVAC mode string ("heat", "off", "cool", etc.)
+  - platform: homeassistant
+    id: floor_heating_state
+    entity_id: ${floor_heating_entity}
+    on_value:
+      - lvgl.label.update:
+          id: floor_state_label
+          text: !lambda 'return x;'
+
+  - platform: homeassistant
+    id: hvac_mode
+    entity_id: ${hvac_entity}
+    on_value:
+      - lvgl.label.update:
+          id: hvac_mode_label
+          text: !lambda 'return x;'
+
+  - platform: wifi_info
+    ip_address:
+      name: IP Address
+      entity_category: diagnostic
+
+script:
+  - id: refresh_occupancy
+    then:
+      - if:
+          condition:
+            binary_sensor.is_on: office_occupancy
+          then:
+            - lvgl.label.update:
+                id: occupancy_dot
+                text_color: 0x00cc44
+            - lvgl.label.update:
+                id: occupancy_text
+                text: "Occupied"
+                text_color: 0x00cc44
+          else:
+            - lvgl.label.update:
+                id: occupancy_dot
+                text_color: 0x555555
+            - lvgl.label.update:
+                id: occupancy_text
+                text: "Unoccupied"
+                text_color: 0x888888
+
+binary_sensor:
+  - platform: homeassistant
+    id: office_occupancy
+    entity_id: ${occupancy_entity}
+    on_state:
+      - script.execute: refresh_occupancy
+
 api:
   on_client_connected:
     - lvgl.widget.hide: boot_screen
+    - delay: 1s
+    - script.execute: refresh_occupancy
 
 ota:
   - platform: esphome
@@ -104,5 +347,11 @@ wifi:
   password: !secret wifi_password
 
 packages:
-  lvgl: !include solar-ev-charger/lvgl.yaml
+  lvgl: !include office-dashboard/lvgl.yaml
 
+font:
+  - file: "materialdesignicons-webfont.ttf"
+    id: mdi_fonts
+    size: 42
+    bpp: 4
+    glyphs: ["\U000F0D91"]
