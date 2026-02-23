@@ -1,0 +1,197 @@
+image:
+  - file: https://pbs.twimg.com/media/B7KD29LIIAEwqmN.jpg
+    id: megadesk_icon
+    resize: 200x200
+    type: RGB565
+
+font:
+  - file: "materialdesignicons-webfont.ttf"
+    id: mdi_32
+    size: 32
+    glyphs:
+      - "${preset_1_icon}"
+      - "${preset_2_icon}"
+      - "${preset_3_icon}"
+      - "\U000F0156"  # close
+
+lvgl:
+  displays:
+    - round_display
+  touchscreens:
+    - touch
+  bg_color: 0x000000
+  on_idle:
+    timeout: !lambda "return (id(display_timeout).state * 1000);"
+    then:
+      - logger.log: "LVGL is idle"
+      - light.turn_off: display_backlight
+      - lvgl.pause:
+          show_snow: true
+  top_layer:
+    widgets:
+      - obj:
+          id: connecting_overlay
+          width: 260
+          height: 260
+          bg_color: 0x000000
+          x: -10
+          y: -10
+          bg_opa: COVER
+          widgets:
+            - spinner:
+                id: connecting_spinner
+                align: CENTER
+                height: 60
+                width: 60
+                arc_color: 0x000000
+                arc_rounded: true
+                spin_time: 2s
+                arc_length: 60deg
+                indicator:
+                  arc_color: 0x00FFFF
+                  arc_width: 6
+            - label:
+                id: connecting_label
+                align: CENTER
+                y: 50
+                text: "Connecting..."
+                text_font: montserrat_16
+                text_color: 0xffffff
+  pages:
+    - id: about_page
+      bg_color: 0x000000
+      widgets:
+        - image:
+            align: CENTER
+            y: -20
+            src: megadesk_icon
+        - label:
+            align: BOTTOM_MID
+            y: -40
+            text: "Ikea Megadesk"
+            text_font: montserrat_24
+            text_color: 0xffffff
+    - id: desk_page
+      bg_color: 0x000000
+      widgets:
+        - label:
+            align: TOP_MID
+            y: 40
+            text: "Desk Height"
+            text_font: montserrat_24
+            text_color: 0xffffff
+        - label:
+            id: height_label
+            align: CENTER
+            text: "-- cm"
+            text_font: montserrat_48
+            text_color: 0xffffff
+            hidden: true
+        - label:
+            id: mode_label
+            align: BOTTOM_MID
+            y: -20
+            text: "Turn to navigate"
+            text_font: montserrat_16
+            text_color: 0xffffff
+            hidden: true
+    - id: presets_page
+      bg_color: 0x000000
+      widgets:
+        - label:
+            id: presets_title
+            align: TOP_MID
+            y: 25
+            text: "Presets"
+            text_font: montserrat_24
+            text_color: 0xffffff
+        - label:
+            id: presets_hint
+            align: BOTTOM_MID
+            y: -15
+            text: "Press to select"
+            text_font: montserrat_16
+            text_color: 0xffffff
+        - obj:
+            id: presets_container
+            align: CENTER
+            width: 190
+            height: 140
+            scrollbar_mode: auto
+            bg_opa: TRANSP
+            border_width: 0
+            pad_all: 0
+            layout:
+              type: flex
+              flex_flow: COLUMN
+              flex_align_main: START
+              flex_align_cross: CENTER
+              pad_row: 8
+            widgets:
+              - button:
+                  id: preset_67
+                  width: 180
+                  height: 42
+                  checkable: true
+                  widgets:
+                    - label:
+                        align: LEFT_MID
+                        x: 10
+                        text: "${preset_1_icon}"
+                        text_font: mdi_32
+                    - label:
+                        id: preset_1_label
+                        align: CENTER
+                        x: 20
+                        text: "${preset_1_height} cm"
+                        text_font: montserrat_24
+              - button:
+                  id: preset_100
+                  width: 180
+                  height: 42
+                  checkable: true
+                  widgets:
+                    - label:
+                        align: LEFT_MID
+                        x: 10
+                        text: "${preset_2_icon}"
+                        text_font: mdi_32
+                    - label:
+                        id: preset_2_label
+                        align: CENTER
+                        x: 20
+                        text: "${preset_2_height} cm"
+                        text_font: montserrat_24
+              - button:
+                  id: preset_108
+                  width: 180
+                  height: 42
+                  checkable: true
+                  widgets:
+                    - label:
+                        align: LEFT_MID
+                        x: 10
+                        text: "${preset_3_icon}"
+                        text_font: mdi_32
+                    - label:
+                        id: preset_3_label
+                        align: CENTER
+                        x: 20
+                        text: "${preset_3_height} cm"
+                        text_font: montserrat_24
+              - button:
+                  id: cancel_preset_btn
+                  width: 180
+                  height: 42
+                  checkable: true
+                  widgets:
+                    - label:
+                        align: LEFT_MID
+                        x: 10
+                        text: "\U000F0156"
+                        text_font: mdi_32
+                    - label:
+                        align: CENTER
+                        x: 20
+                        text: "Cancel"
+                        text_font: montserrat_24

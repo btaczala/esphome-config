@@ -1,0 +1,278 @@
+sensor:
+  - platform: rotary_encoder
+    id: encoder
+    pin_a: GPIO40
+    pin_b: GPIO41
+    on_clockwise:
+      - if:
+          condition: lvgl.is_paused
+          then:
+            - lvgl.resume:
+            - lvgl.widget.redraw:
+      - light.turn_on: display_backlight
+      - lambda: |-
+          ESP_LOGI("encoder", "Clockwise rotation, mode: %d, page: %d, page_2_active: %d", id(encoder_mode), id(current_page), id(page_2_active));
+      - if:
+          condition:
+            lambda: 'return id(encoder_mode) == 1;'
+          then:
+            # Height control mode on page 1
+            - lambda: |-
+                id(pending_height_change) += 2.0;
+                float projected = id(desk_target_height).state + id(pending_height_change);
+                ESP_LOGI("encoder", "Accumulated change: %.1f, projected height: %.1f", id(pending_height_change), projected);
+            - lvgl.label.update:
+                id: height_label
+                text: !lambda |-
+                  char buf[32];
+                  float projected = id(desk_target_height).state + id(pending_height_change);
+                  snprintf(buf, sizeof(buf), "%.1f cm", projected);
+                  return std::string(buf);
+            - script.execute: delayed_height_update
+          else:
+            - if:
+                condition:
+                  lambda: 'return id(current_page) == 2 && id(page_2_active);'
+                then:
+                  # On presets page and active - cycle through presets
+                  - lambda: |-
+                      id(selected_preset) = (id(selected_preset) + 1) % 4;
+                      ESP_LOGI("encoder", "Selected preset: %d", id(selected_preset));
+                  - script.execute: update_preset_selection
+                else:
+                  # Navigate to next page
+                  - lambda: |-
+                      ESP_LOGI("encoder", "Page navigation - next");
+                  - lvgl.page.next:
+                  - lambda: |-
+                      id(current_page) = (id(current_page) + 1) % 3;
+                      id(encoder_mode) = 0;
+                      if (id(page_2_active)) {
+                        id(page_2_active) = false;  // Deactivate page 2 when leaving
+                      }
+                      ESP_LOGI("encoder", "Now on page: %d", id(current_page));
+                  - lvgl.label.update:
+                      id: mode_label
+                      text: "Turn to navigate"
+                  - lvgl.label.update:
+                      id: presets_hint
+                      text: "Press to select"
+    on_anticlockwise:
+      - if:
+          condition: lvgl.is_paused
+          then:
+            - lvgl.resume:
+            - lvgl.widget.redraw:
+      - light.turn_on: display_backlight
+      - lambda: |-
+          ESP_LOGI("encoder", "Anticlockwise rotation, mode: %d, page: %d, page_2_active: %d", id(encoder_mode), id(current_page), id(page_2_active));
+      - if:
+          condition:
+            lambda: 'return id(encoder_mode) == 1;'
+          then:
+            # Height control mode on page 1
+            - lambda: |-
+                id(pending_height_change) -= 2.0;
+                float projected = id(desk_target_height).state + id(pending_height_change);
+                ESP_LOGI("encoder", "Accumulated change: %.1f, projected height: %.1f", id(pending_height_change), projected);
+            - lvgl.label.update:
+                id: height_label
+                text: !lambda |-
+                  char buf[32];
+                  float projected = id(desk_target_height).state + id(pending_height_change);
+                  snprintf(buf, sizeof(buf), "%.1f cm", projected);
+                  return std::string(buf);
+            - script.execute: delayed_height_update
+          else:
+            - if:
+                condition:
+                  lambda: 'return id(current_page) == 2 && id(page_2_active);'
+                then:
+                  # On presets page and active - cycle through presets
+                  - lambda: |-
+                      id(selected_preset) = (id(selected_preset) + 3) % 4;  // +3 mod 4 = -1 mod 4
+                      ESP_LOGI("encoder", "Selected preset: %d", id(selected_preset));
+                  - script.execute: update_preset_selection
+                else:
+                  # Navigate to previous page
+                  - lambda: |-
+                      ESP_LOGI("encoder", "Page navigation - previous");
+                  - lvgl.page.previous:
+                  - lambda: |-
+                      id(current_page) = (id(current_page) + 2) % 3;  // +2 mod 3 = -1 mod 3
+                      id(encoder_mode) = 0;
+                      if (id(page_2_active)) {
+                        id(page_2_active) = false;  // Deactivate page 2 when leaving
+                      }
+                      ESP_LOGI("encoder", "Now on page: %d", id(current_page));
+                  - lvgl.label.update:
+                      id: mode_label
+                      text: "Turn to navigate"
+                  - lvgl.label.update:
+                      id: presets_hint
+                      text: "Press to select"
+
+  - platform: homeassistant
+    id: desk_height
+    entity_id: sensor.megadesk_height_cm
+    on_value:
+      - lvgl.label.update:
+          id: height_label
+          text: !lambda |-
+            char buf[32];
+            snprintf(buf, sizeof(buf), "%.1f cm", x);
+            return std::string(buf);
+
+  - platform: homeassistant
+    id: desk_target_height
+    entity_id: number.megadesk_height_cm_2
+    on_value:
+      - lambda: |-
+          ESP_LOGI("encoder", "Target height updated to: %.1f", x);
+
+  - platform: wifi_signal
+    name: "WiFi Signal"
+    id: wifi_signal_db
+    update_interval: 60s
+    entity_category: diagnostic
+
+  - platform: copy
+    source_id: wifi_signal_db
+    name: "WiFi Signal Percent"
+    filters:
+      - lambda: return min(max(2 * (x + 100.0), 0.0), 100.0);
+    unit_of_measurement: "%"
+    entity_category: diagnostic
+
+  - platform: uptime
+    name: "Uptime"
+    update_interval: 60s
+
+text_sensor:
+  - platform: wifi_info
+    ip_address:
+      name: "IP Address"
+    mac_address:
+      name: "MAC Address"
+
+time:
+  # RTC
+  - platform: pcf8563
+    id: rtctime
+    i2c_id: internal_i2c
+    address: 0x51
+    update_interval: never
+  - platform: homeassistant
+    id: esptime
+    on_time_sync:
+      then:
+        - pcf8563.write_time:
+
+binary_sensor:
+  - platform: gpio
+    name: Button
+    id: front_button
+    pin: GPIO42
+    on_press:
+      - if:
+          condition: lvgl.is_paused
+          then:
+            - lvgl.resume:
+            - lvgl.widget.redraw:
+      - light.turn_on: display_backlight
+      - lambda: |-
+          ESP_LOGI("button", "Button pressed on page %d, page_2_active: %d", id(current_page), id(page_2_active));
+      - if:
+          condition:
+            lambda: 'return id(current_page) == 2 && !id(page_2_active);'
+          then:
+            # On presets page but not active - activate it
+            - lambda: |-
+                ESP_LOGI("preset", "Activating page 2 for preset selection");
+                id(page_2_active) = true;
+            - lvgl.label.update:
+                id: presets_hint
+                text: "Turn to select"
+          else:
+            - if:
+                condition:
+                  lambda: 'return id(current_page) == 2 && id(page_2_active);'
+                then:
+                  - if:
+                      condition:
+                        lambda: 'return id(selected_preset) == 3;'
+                      then:
+                        # Cancel selected - just deactivate without applying
+                        - lambda: |-
+                            ESP_LOGI("preset", "Cancel selected, deactivating page 2");
+                            id(page_2_active) = false;
+                        - lvgl.label.update:
+                            id: presets_hint
+                            text: "Press to select"
+                        - script.execute: update_preset_selection
+                      else:
+                        # On presets page and active - apply selected preset and deactivate
+                        - lambda: |-
+                            ESP_LOGI("preset", "Applying preset %d", id(selected_preset));
+                        - homeassistant.service:
+                            service: number.set_value
+                            data:
+                              entity_id: number.megadesk_height_cm_2
+                              value: !lambda |-
+                                float heights[] = {
+                                  id(preset_1_height_num).state,
+                                  id(preset_2_height_num).state,
+                                  id(preset_3_height_num).state
+                                };
+                                float selected_height = heights[id(selected_preset)];
+                                ESP_LOGI("preset", "Setting desk to %.0f cm", selected_height);
+                                return selected_height;
+                        - lambda: |-
+                            ESP_LOGI("preset", "Preset applied, deactivating page 2");
+                            id(page_2_active) = false;
+                        - lvgl.label.update:
+                            id: presets_hint
+                            text: "Press to select"
+                        - script.execute: update_preset_selection
+                else:
+                  - if:
+                      condition:
+                        lambda: 'return id(current_page) == 1;'
+                      then:
+                        # On desk page - toggle encoder mode
+                        - lambda: |-
+                            int old_mode = id(encoder_mode);
+                            id(encoder_mode) = (id(encoder_mode) == 0) ? 1 : 0;
+                            ESP_LOGI("encoder", "Button pressed! Mode switched from %d to %d", old_mode, id(encoder_mode));
+                        - if:
+                            condition:
+                              lambda: 'return id(encoder_mode) == 0 && id(pending_height_change) != 0.0;'
+                            then:
+                              - lambda: |-
+                                  ESP_LOGI("encoder", "Switching to nav mode, applying pending changes first");
+                              - script.stop: delayed_height_update
+                              - script.execute: apply_height_change
+                        - lvgl.label.update:
+                            id: mode_label
+                            text: !lambda |-
+                              if (id(encoder_mode) == 1) {
+                                return std::string("Turn to adjust");
+                              } else {
+                                return std::string("Turn to navigate");
+                              }
+
+  - platform: gpio
+    name: Hold Button
+    pin: GPIO46
+
+  - platform: homeassistant
+    id: office_occupancy
+    entity_id: binary_sensor.zajetosc_biura
+    on_press:
+      - logger.log: "Office occupied, waking up display"
+      - if:
+          condition: lvgl.is_paused
+          then:
+            - lvgl.resume:
+            - lvgl.widget.redraw:
+      - light.turn_on: display_backlight
