@@ -8,17 +8,30 @@ substitutions:
   floor_heating_entity: climate.termostat_biuro_thermostat
   hvac_entity: climate.klimatyzacja_biuro
   occupancy_entity: binary_sensor.zajetosc_biura
+  solar_max_kw: "10"
+  solar_production_entity: sensor.produkcja_energii_4
+  home_consumption_entity: sensor.zuzycie_energii_3
+  battery_usage_entity: sensor.zuzycie_baterii_2
+  battery_soc_entity: sensor.pv_naladowanie_baterii_2
+  energy_today_entity: sensor.energia_wyprodukowana_dzisiaj
+  solar_forecast_entity: sensor.solcast_pv_forecast_prognoza_na_dzisiaj
+  energy_price_entity: sensor.rce_pse_cena
+  energy_price_min_entity: sensor.rce_pse_minimalna_cena_dzisiaj
+  energy_price_max_entity: sensor.rce_pse_maksymalna_cena_dzisiaj
 
 esphome:
   name: "${name}"
   platformio_options:
+    build_flags: "-DBOARD_HAS_PSRAM"
     board_build.flash_mode: dio
+    board_upload.maximum_ram_size: 524288
   on_boot:
     - output.turn_on: backlight_output
 
 esp32:
   board: esp32-s3-devkitc-1
   variant: esp32s3
+  flash_size: 8MB
   framework:
     type: esp-idf
     sdkconfig_options:
@@ -26,6 +39,7 @@ esp32:
       CONFIG_ESP32S3_DATA_CACHE_64KB: "y"
       CONFIG_SPIRAM_FETCH_INSTRUCTIONS: y
       CONFIG_SPIRAM_RODATA: y
+      CONFIG_ESPTOOLPY_FLASHSIZE_8MB: y
 
 logger:
 
@@ -48,6 +62,7 @@ switch:
     turn_on_action:
       - lvgl.resume
       - output.turn_on: backlight_output
+      - lvgl.widget.show: top_bar
     turn_off_action:
       - lvgl.pause:
           show_snow: false
@@ -76,6 +91,12 @@ globals:
   - id: screensaver_active
     type: bool
     initial_value: 'false'
+  - id: energy_today_val
+    type: float
+    initial_value: '0'
+  - id: solar_forecast_val
+    type: float
+    initial_value: '0'
 
 touchscreen:
   - platform: gt911
@@ -101,6 +122,7 @@ touchscreen:
                   # Dismiss screensaver on any touch
                   - lvgl.page.show: main_page
                   - lambda: id(screensaver_active) = false;
+                  - lvgl.widget.show: top_bar
                 else:
                   - lambda: |-
                       id(swipe_start_x) = touch.x;
@@ -117,7 +139,7 @@ touchscreen:
           condition:
             lambda: 'return !id(screensaver_active) && (id(swipe_start_x) - id(swipe_current_x)) > 80;'
           then:
-            - lvgl.page.show: page_2
+            - lvgl.page.show: energy_page
       - if:
           condition:
             lambda: 'return !id(screensaver_active) && (id(swipe_current_x) - id(swipe_start_x)) > 80;'
@@ -258,6 +280,121 @@ sensor:
     update_interval: 60s
     entity_category: diagnostic
 
+  # Energy sensors
+  - platform: homeassistant
+    id: solar_production
+    entity_id: ${solar_production_entity}
+    on_value:
+      - lvgl.label.update:
+          id: energy_solar_label
+          text: !lambda |-
+            char buf[12];
+            snprintf(buf, sizeof(buf), "%.2f kW", x);
+            return std::string(buf);
+      - lvgl.indicator.update:
+          id: solar_arc
+          end_value: !lambda 'return (int)(x * 10);'
+      - lvgl.indicator.update:
+          id: solar_needle
+          value: !lambda 'return (int)(x * 10);'
+
+  - platform: homeassistant
+    id: home_consumption
+    entity_id: ${home_consumption_entity}
+    on_value:
+      - lvgl.label.update:
+          id: energy_consumption_label
+          text: !lambda |-
+            char buf[12];
+            snprintf(buf, sizeof(buf), "%.2f kW", x);
+            return std::string(buf);
+
+  - platform: homeassistant
+    id: battery_usage
+    entity_id: ${battery_usage_entity}
+    on_value:
+      - lvgl.label.update:
+          id: energy_battery_flow_label
+          text: !lambda |-
+            char buf[12];
+            snprintf(buf, sizeof(buf), "%.2f kW", x);
+            return std::string(buf);
+
+  - platform: homeassistant
+    id: battery_soc
+    entity_id: ${battery_soc_entity}
+    on_value:
+      - lvgl.label.update:
+          id: energy_battery_soc_label
+          text: !lambda |-
+            char buf[8];
+            snprintf(buf, sizeof(buf), "%.0f%%", x);
+            return std::string(buf);
+
+  - platform: homeassistant
+    id: energy_today
+    entity_id: ${energy_today_entity}
+    on_value:
+      - lambda: id(energy_today_val) = x;
+      - lvgl.label.update:
+          id: energy_today_label
+          text: !lambda |-
+            char buf[20];
+            snprintf(buf, sizeof(buf), "%.1f / %.1f kWh", id(energy_today_val), id(solar_forecast_val));
+            return std::string(buf);
+      - lvgl.bar.update:
+          id: energy_today_bar
+          value: !lambda 'return (int)(x * 10);'
+
+  - platform: homeassistant
+    id: solar_forecast
+    entity_id: ${solar_forecast_entity}
+    on_value:
+      - lambda: id(solar_forecast_val) = x;
+      - lvgl.label.update:
+          id: energy_today_label
+          text: !lambda |-
+            char buf[20];
+            snprintf(buf, sizeof(buf), "%.1f / %.1f kWh", id(energy_today_val), id(solar_forecast_val));
+            return std::string(buf);
+      - lvgl.bar.update:
+          id: energy_today_bar
+          max_value: !lambda 'return (int)(x * 10);'
+          min_value: 0
+
+  - platform: homeassistant
+    id: energy_price
+    entity_id: ${energy_price_entity}
+    on_value:
+      - lvgl.label.update:
+          id: energy_price_label
+          text: !lambda |-
+            char buf[12];
+            snprintf(buf, sizeof(buf), "%.2f", x);
+            return std::string(buf);
+
+  - platform: homeassistant
+    id: energy_price_min
+    entity_id: ${energy_price_min_entity}
+    on_value:
+      - lvgl.label.update:
+          id: energy_price_min_label
+          text: !lambda |-
+            char buf[12];
+            snprintf(buf, sizeof(buf), "%.2f", x);
+            return std::string(buf);
+
+  - platform: homeassistant
+    id: energy_price_max
+    entity_id: ${energy_price_max_entity}
+    on_value:
+      - lvgl.label.update:
+          id: energy_price_max_label
+          text: !lambda |-
+            char buf[12];
+            snprintf(buf, sizeof(buf), "%.2f", x);
+            return std::string(buf);
+
 text_sensor:
   # Weather condition state (e.g. "sunny", "cloudy") – adjust entity to your weather integration
   - platform: homeassistant
@@ -320,6 +457,19 @@ binary_sensor:
     on_state:
       - script.execute: refresh_occupancy
 
+  - platform: homeassistant
+    id: dnd_switch
+    entity_id: switch.nie_przeszkadzac
+    on_state:
+      - if:
+          condition:
+            binary_sensor.is_on: dnd_switch
+          then:
+            - lvgl.widget.show: dnd_overlay
+            - lambda: 'lv_animimg_start(id(dnd_overlay));'
+          else:
+            - lvgl.widget.hide: dnd_overlay
+
 api:
   on_client_connected:
     - lvgl.widget.hide: boot_screen
@@ -335,6 +485,11 @@ wifi:
 
 packages:
   lvgl: !include office-dashboard/lvgl.yaml
+
+animation:
+  - file: office-dashboard/nie_przeszkadzac.gif
+    id: dnd_gif
+    type: RGB565
 
 font:
   - file: "materialdesignicons-webfont.ttf"

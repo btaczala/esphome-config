@@ -3,54 +3,6 @@ bg_color: 0x0f1923
 bg_opa: COVER
 widgets:
 
-  # ── TOP BAR (800×65) ─────────────────────────────────────────────────
-  - obj:
-      x: 0
-      y: 0
-      width: 800
-      height: 65
-      bg_color: 0x0a1020
-      bg_opa: COVER
-      radius: 0
-      border_width: 0
-      pad_all: 0
-      widgets:
-        - label:
-            id: time_label
-            align: LEFT_MID
-            x: 20
-            text: "--:--"
-            text_font: montserrat_48
-            text_color: 0xffffff
-        - label:
-            id: date_label
-            align: CENTER
-            text: "---"
-            text_font: montserrat_20
-            text_color: 0x8899aa
-        - obj:
-            align: RIGHT_MID
-            x: -15
-            width: 220
-            height: 50
-            bg_opa: TRANSP
-            border_width: 0
-            pad_all: 0
-            widgets:
-              - label:
-                  id: occupancy_dot
-                  align: LEFT_MID
-                  text: "\U000F0D91"
-                  text_font: mdi_fonts
-                  text_color: 0x555555
-              - label:
-                  id: occupancy_text
-                  align: LEFT_MID
-                  x: 40
-                  text: "Unoccupied"
-                  text_font: montserrat_20
-                  text_color: 0x888888
-
   # ── WEATHER CARD (x=10, w=248) ───────────────────────────────────────
   - obj:
       x: 10
@@ -357,4 +309,4 @@ widgets:
             bg_color: 0x334466
             border_width: 0
             on_click:
-              - lvgl.page.show: page_2
+              - lvgl.page.show: energy_page

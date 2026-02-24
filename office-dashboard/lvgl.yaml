@@ -8,12 +8,68 @@ lvgl:
       then:
         - lvgl.page.show: screensaver_page
         - lambda: id(screensaver_active) = true;
+        - lvgl.widget.hide: top_bar
     - timeout: 10min
       then:
         - switch.turn_off: screen_switch
         - lambda: id(screensaver_active) = false;
   top_layer:
     widgets:
+      - animimg:
+          id: dnd_overlay
+          src: dnd_gif
+          align: CENTER
+          hidden: true
+          duration: 2000ms
+          auto_start: true
+          repeat_count: forever
+      - obj:
+          id: top_bar
+          x: 0
+          y: 0
+          width: 800
+          height: 65
+          bg_color: 0x0a1020
+          bg_opa: COVER
+          radius: 0
+          border_width: 0
+          pad_all: 0
+          widgets:
+            - label:
+                id: time_label
+                align: LEFT_MID
+                x: 20
+                text: "--:--"
+                text_font: montserrat_48
+                text_color: 0xffffff
+            - label:
+                id: date_label
+                align: CENTER
+                text: "---"
+                text_font: montserrat_20
+                text_color: 0x8899aa
+            - obj:
+                align: RIGHT_MID
+                x: -15
+                width: 220
+                height: 50
+                bg_opa: TRANSP
+                border_width: 0
+                pad_all: 0
+                widgets:
+                  - label:
+                      id: occupancy_dot
+                      align: LEFT_MID
+                      text: "\U000F0D91"
+                      text_font: mdi_fonts
+                      text_color: 0x555555
+                  - label:
+                      id: occupancy_text
+                      align: LEFT_MID
+                      x: 40
+                      text: "Unoccupied"
+                      text_font: montserrat_20
+                      text_color: 0x888888
       - obj:
           id: boot_screen
           x: 0
@@ -45,5 +101,5 @@ lvgl:
 
   pages:
     - !include pages/overview.yaml
-    - !include pages/page2.yaml
+    - !include pages/energy.yaml
     - !include pages/screensaver.yaml
