@@ -1,0 +1,18 @@
+id: screensaver_page
+bg_color: 0x000000
+bg_opa: COVER
+widgets:
+  - label:
+      id: screensaver_time_label
+      align: CENTER
+      y: -30
+      text: "--:--"
+      text_font: montserrat_48
+      text_color: 0x18bcf2
+  - label:
+      id: screensaver_date_label
+      align: CENTER
+      y: 30
+      text: "---"
+      text_font: montserrat_24
+      text_color: 0x4a6a8a

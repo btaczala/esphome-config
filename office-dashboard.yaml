@@ -14,8 +14,7 @@ esphome:
   platformio_options:
     board_build.flash_mode: dio
   on_boot:
-    - output.turn_on: display_enable
-    - light.turn_on: backlight
+    - output.turn_on: backlight_output
 
 esp32:
   board: esp32-s3-devkitc-1
@@ -34,22 +33,11 @@ ch422g:
   - id: ch422g_hub
 
 output:
-  - platform: ledc
-    pin: 6
-    id: backlight_output
   - platform: gpio
     pin:
       ch422g: ch422g_hub
       number: 2
-    id: display_enable
-
-light:
-  - platform: monochromatic
-    output: backlight_output
-    name: Backlight
-    id: backlight
-    default_transition_length: 0s
-    restore_mode: ALWAYS_ON
+    id: backlight_output
 
 switch:
   - platform: template
@@ -59,15 +47,11 @@ switch:
     optimistic: true
     turn_on_action:
       - lvgl.resume
-      - output.set_level:
-          id: backlight_output
-          level: 100%
+      - output.turn_on: backlight_output
     turn_off_action:
       - lvgl.pause:
           show_snow: false
-      - output.set_level:
-          id: backlight_output
-          level: 0%
+      - output.turn_off: backlight_output
 
 psram:
   mode: octal
@@ -119,11 +103,14 @@ touchscreen:
                   - lambda: id(screensaver_active) = false;
                 else:
                   - lambda: |-
-                      if (!id(swipe_tracking)) {
-                        id(swipe_start_x) = touch.x;
-                        id(swipe_tracking) = true;
-                      }
+                      id(swipe_start_x) = touch.x;
                       id(swipe_current_x) = touch.x;
+                      id(swipe_tracking) = true;
+    on_update:
+      - lambda: |-
+          if (id(swipe_tracking) && !touches.empty()) {
+            id(swipe_current_x) = touches[0].x;
+          }
     on_release:
       - lambda: id(swipe_tracking) = false;
       - if:
