@@ -102,8 +102,17 @@ widgets:
             text_font: montserrat_14
             text_color: 0x4a6a8a
         - label:
+            id: battery_icon_label
+            align: CENTER
+            x: -55
+            y: -15
+            text: "\U000F0079"
+            text_font: mdi_fonts
+            text_color: 0x44cc66
+        - label:
             id: energy_battery_soc_label
             align: CENTER
+            x: 25
             y: -15
             text: "---%"
             text_font: montserrat_28

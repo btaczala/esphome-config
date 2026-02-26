@@ -330,6 +330,22 @@ sensor:
             char buf[8];
             snprintf(buf, sizeof(buf), "%.0f%%", x);
             return std::string(buf);
+      - lambda: |-
+          lv_obj_t* icon = id(battery_icon_label);
+          const char* glyph;
+          lv_color_t color;
+          if (x < 5)        { glyph = "\U000F008E"; color = lv_color_hex(0xff3333); }  // empty
+          else if (x < 15)  { glyph = "\U000F007A"; color = lv_color_hex(0xff3333); }  // 10%
+          else if (x < 25)  { glyph = "\U000F007B"; color = lv_color_hex(0xff9900); }  // 20%
+          else if (x < 35)  { glyph = "\U000F007C"; color = lv_color_hex(0xff9900); }  // 30%
+          else if (x < 45)  { glyph = "\U000F007D"; color = lv_color_hex(0xffcc00); }  // 40%
+          else if (x < 60)  { glyph = "\U000F007E"; color = lv_color_hex(0xffcc00); }  // 50%
+          else if (x < 75)  { glyph = "\U000F0080"; color = lv_color_hex(0xaacc44); }  // 70%
+          else if (x < 85)  { glyph = "\U000F0081"; color = lv_color_hex(0x44cc66); }  // 80%
+          else if (x < 95)  { glyph = "\U000F0082"; color = lv_color_hex(0x44cc66); }  // 90%
+          else              { glyph = "\U000F0079"; color = lv_color_hex(0x44cc66); }  // full
+          lv_label_set_text(icon, glyph);
+          lv_obj_set_style_text_color(icon, color, LV_PART_MAIN);
 
   - platform: homeassistant
     id: energy_today
@@ -404,6 +420,27 @@ text_sensor:
       - lvgl.label.update:
           id: weather_condition_label
           text: !lambda 'return x;'
+      - lambda: |-
+          const std::string& ws = x;
+          const char* glyph;
+          lv_color_t color;
+          if (ws == "cloudy")             { glyph = "\U000F0590"; color = lv_color_hex(0x889aaa); }
+          else if (ws == "exceptional")   { glyph = "\U000F0026"; color = lv_color_hex(0xff7030); }
+          else if (ws == "fog")           { glyph = "\U000F0591"; color = lv_color_hex(0xaabbcc); }
+          else if (ws == "hail")          { glyph = "\U000F0592"; color = lv_color_hex(0xaaccee); }
+          else if (ws == "lightning")     { glyph = "\U000F0593"; color = lv_color_hex(0xffcc00); }
+          else if (ws == "lightning-rainy") { glyph = "\U000F067E"; color = lv_color_hex(0xffcc00); }
+          else if (ws == "partlycloudy")  { glyph = "\U000F0595"; color = lv_color_hex(0xf5c400); }
+          else if (ws == "pouring")       { glyph = "\U000F0596"; color = lv_color_hex(0x18bcf2); }
+          else if (ws == "rainy")         { glyph = "\U000F0597"; color = lv_color_hex(0x18bcf2); }
+          else if (ws == "snowy")         { glyph = "\U000F0598"; color = lv_color_hex(0xaaccee); }
+          else if (ws == "snowy-rainy")   { glyph = "\U000F067F"; color = lv_color_hex(0xaaccee); }
+          else if (ws == "sunny")         { glyph = "\U000F0599"; color = lv_color_hex(0xf5c400); }
+          else if (ws == "windy")         { glyph = "\U000F059D"; color = lv_color_hex(0x44ccaa); }
+          else if (ws == "windy-variant") { glyph = "\U000F059E"; color = lv_color_hex(0x44ccaa); }
+          else                            { glyph = "\U000F0599"; color = lv_color_hex(0xccddee); }
+          lv_label_set_text(id(weather_icon_label), glyph);
+          lv_obj_set_style_text_color(id(weather_icon_label), color, LV_PART_MAIN);
 
   # Climate entity state is the HVAC mode string ("heat", "off", "cool", etc.)
   - platform: homeassistant
@@ -449,6 +486,19 @@ script:
                 id: occupancy_text
                 text: "Unoccupied"
                 text_color: 0x888888
+
+interval:
+  - interval: 15s
+    then:
+      - if:
+          condition:
+            lambda: 'return id(screensaver_active);'
+          then:
+            - lambda: |-
+                // Screen 800×480, container 400×110 — keep 20px margin on all sides
+                int new_x = 20 + (esp_random() % 381);  // 20 to 400
+                int new_y = 20 + (esp_random() % 331);  // 20 to 350
+                lv_obj_set_pos(id(screensaver_container), new_x, new_y);
 
 binary_sensor:
   - platform: homeassistant
@@ -496,4 +546,11 @@ font:
     id: mdi_fonts
     size: 42
     bpp: 4
-    glyphs: ["\U000F0D91"]
+    glyphs: [
+      "\U000F0D91",
+      "\U000F008E", "\U000F007A", "\U000F007B", "\U000F007C", "\U000F007D",
+      "\U000F007E", "\U000F0079", "\U000F0080", "\U000F0081", "\U000F0082",
+      "\U000F0590", "\U000F0026", "\U000F0591", "\U000F0592", "\U000F0593",
+      "\U000F067E", "\U000F0595", "\U000F0596", "\U000F0597", "\U000F0598",
+      "\U000F067F", "\U000F0599", "\U000F059D", "\U000F059E"
+    ]

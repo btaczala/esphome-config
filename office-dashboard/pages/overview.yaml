@@ -30,6 +30,13 @@ widgets:
             text_font: montserrat_18
             text_color: 0xccddee
         - label:
+            id: weather_icon_label
+            align: TOP_MID
+            y: 55
+            text: "\U000F0599"
+            text_font: mdi_fonts
+            text_color: 0xf5c400
+        - label:
             id: weather_temp_label
             align: CENTER
             y: -30
