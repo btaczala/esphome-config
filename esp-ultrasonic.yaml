@@ -1,14 +1,9 @@
-# do not change nor update!!!!!
-# working esphome version is 
-# version := "2024.12.0"
 substitutions:
   device_name: esp-ultrasonic
 
 esphome:
   name: ${device_name}
   friendly_name: "ESPHOME Ultrasonic Sensor"
-  platformio_options: 
-    build_flags: "-DI2C_NUM_1=I2C_NUM_0"
   on_boot:
     priority: 100.0
     then:
@@ -17,13 +12,11 @@ esphome:
           level: INFO
 
 esp32:
-  board: esp32-c6-devkitc-1
+  board: seeed_xiao_esp32c6
   flash_size: 4MB
   variant: esp32c6
   framework:
     type: esp-idf
-    version: "5.3.1"
-    platform_version: 6.9.0
     sdkconfig_options:
       CONFIG_ESPTOOLPY_FLASHSIZE_4MB: y
 
@@ -47,6 +40,17 @@ wifi:
   ssid: !secret wifi_ssid
   password: !secret wifi_password
 
+# A02YYUW UART wiring (XIAO ESP32-C6):
+#   Sensor VCC (red)    → 5V
+#   Sensor GND (black)  → GND
+#   Sensor TX (yellow)  → D9 / GPIO20 (ESP RX)
+#   Sensor RX (white)   → D10 / GPIO18 (ESP TX)
+uart:
+  id: uart_bus
+  tx_pin: GPIO18
+  rx_pin: GPIO20
+  baud_rate: 9600
+
 text_sensor:
   - platform: wifi_info
     ip_address:
@@ -61,22 +65,8 @@ sensor:
   - platform: wifi_signal
     name: ${device_name} rssi
     update_interval: 60s
-  - platform: ultrasonic
-    trigger_pin: GPIO20
-    echo_pin: GPIO18
-    name: "Ultrasonic Sensor"
-    update_interval: 1s
-    accuracy_decimals: 2
-    unit_of_measurement: m
-    pulse_time: 25us
-    timeout: 3m
-    filters:
-      - sliding_window_moving_average:
-          window_size: 10 #creates a moving average of the last 10 values
-          send_every: 1 #sends the moving average at every measurement (but only if it passes the delta filter below)) 
-          send_first_at: 1 #after startup immediately start sending the result rather than wait for the first 10 measurements
-      - delta : 0.05 #only send the result if the level difference with the last sent result is higher than this
-      - filter_out: nan
+  - platform: "a02yyuw"
+    name: "Distance"
 
 web_server:
   port: 80
