@@ -7,10 +7,6 @@ substitutions:
   ota_password: ${wifi_password}
   language: pl
 
-time:
-  - platform: sntp
-    id: my_time
-    timezone: "Europe/Warsaw" # Example for Central Europe
 
 wifi:
   manual_ip: 
