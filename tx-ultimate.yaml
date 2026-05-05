@@ -3,7 +3,8 @@ substitutions:
   friendly_name: "TX Ultimate łazienka"
   device_format: EU
   gang_count: 1
-  expose_relays_leds_to_ha: true
+  expose_relays_leds_to_ha: false
+  relay_1_mode: light
 
 
 packages:
@@ -13,7 +14,8 @@ packages:
     refresh: 5min
     files:
       - ESPHome/TX-Ultimate-Easy-ESPHome_core.yaml      # Core (essential) packages
-      - ESPHome/TX-Ultimate-Easy-ESPHome_standard.yaml
+      - ESPHome/TX-Ultimate-Easy-ESPHome_hw_relays.yaml     # Relay control
+      - ESPHome/TX-Ultimate-Easy-ESPHome_media_player.yaml
 esphome:
   name: ${name}
   name_add_mac_suffix: false
@@ -33,4 +35,15 @@ wifi:
   ap:
     ssid: ${friendly_name} AP
     password: "top_secret"
+
+script:
+  - id: !extend touch_on_multi_touch_release
+    then:
+      - light.toggle: light_output_1
+  - id: !extend touch_swipe_${ID_SWIPE_LEFT_OR_UP_TEXT}
+    then:
+      - light.toggle: light_output_1
+  - id: !extend touch_swipe_${ID_SWIPE_RIGHT_OR_DOWN_TEXT}
+    then:
+      - light.toggle: light_output_1
 

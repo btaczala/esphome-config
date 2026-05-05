@@ -15,7 +15,13 @@ api:
 wifi:
   ssid: !secret wifi_ssid
   password: !secret wifi_password
-  manual_ip: 
-    static_ip: 192.168.20.147
-    gateway: 192.168.20.1
-    subnet: 255.255.255.0
+
+logger:
+  level: DEBUG
+  logs:
+    sensor: NONE
+    binary_sensor: NONE
+    component: ERROR
+    esp-idf: ERROR
+    http_request: ERROR
+web_server:

@@ -16,3 +16,6 @@ wifi:
   ssid: !secret wifi_ssid
   password: !secret wifi_password
 
+button:
+  - platform: restart
+    name: "Restart 2"
