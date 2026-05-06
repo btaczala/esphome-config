@@ -169,6 +169,13 @@ time:
         - pcf8563.write_time:
 
 binary_sensor:
+  - platform: template
+    name: "HA API Connected"
+    id: ha_api_connected_sensor
+    device_class: connectivity
+    entity_category: diagnostic
+    lambda: 'return id(ha_connected);'
+
   - platform: gpio
     name: Button
     id: front_button
