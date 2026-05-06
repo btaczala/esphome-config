@@ -17,6 +17,7 @@ font:
 lvgl:
   displays:
     - round_display
+  rotation: 180
   touchscreens:
     - touch
   bg_color: 0x000000

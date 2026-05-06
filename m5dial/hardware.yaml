@@ -32,7 +32,6 @@ display:
     reset_pin: GPIO8
     dc_pin: GPIO4
     invert_colors: true
-    rotation: 180
     color_order: "bgr"
 
 touchscreen:
