@@ -35,3 +35,7 @@ packages:
   sensors: !include m5dial/sensors.yaml
   desk_control: !include m5dial/desk_control.yaml
   display_ui: !include m5dial/display_ui.yaml
+
+button:
+  - platform: restart
+    name: "Restart"
